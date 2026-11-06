@@ -23,6 +23,14 @@ end
 config :streamdeck_emulator, StreamdeckEmulatorWeb.Endpoint,
   http: [port: String.to_integer(System.get_env("PORT", "4000"))]
 
+# The plugin to load at boot (a .sdPlugin folder or .streamDeckPlugin package)
+# and the port plugins and Property Inspectors connect to (0 = any free port).
+if config_env() != :test do
+  config :streamdeck_emulator,
+    plugin_path: System.get_env("STREAMDECK_PLUGIN"),
+    ws_port: String.to_integer(System.get_env("STREAMDECK_WS_PORT", "0"))
+end
+
 if config_env() == :dev do
   # Reload browser tabs when matching files change.
   config :streamdeck_emulator, StreamdeckEmulatorWeb.Endpoint,

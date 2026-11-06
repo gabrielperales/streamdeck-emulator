@@ -5,14 +5,16 @@ defmodule StreamdeckEmulator.Application do
 
   use Application
 
+  require Logger
+
   @impl true
   def start(_type, _args) do
     children = [
       StreamdeckEmulatorWeb.Telemetry,
-      {DNSCluster, query: Application.get_env(:streamdeck_emulator, :dns_cluster_query) || :ignore},
+      {DNSCluster,
+       query: Application.get_env(:streamdeck_emulator, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: StreamdeckEmulator.PubSub},
-      # Start a worker by calling: StreamdeckEmulator.Worker.start_link(arg)
-      # {StreamdeckEmulator.Worker, arg},
+      {DynamicSupervisor, name: StreamdeckEmulator.SessionSupervisor, strategy: :one_for_one},
       # Start to serve requests, typically the last entry
       StreamdeckEmulatorWeb.Endpoint
     ]
@@ -20,7 +22,27 @@ defmodule StreamdeckEmulator.Application do
     # See https://elixir.hexdocs.pm/Supervisor.html
     # for other strategies and supported options
     opts = [strategy: :one_for_one, name: StreamdeckEmulator.Supervisor]
-    Supervisor.start_link(children, opts)
+
+    with {:ok, pid} <- Supervisor.start_link(children, opts) do
+      autostart_plugin()
+      {:ok, pid}
+    end
+  end
+
+  # Loads the plugin named by STREAMDECK_PLUGIN (see config/runtime.exs), if any.
+  defp autostart_plugin do
+    case Application.get_env(:streamdeck_emulator, :plugin_path) do
+      nil ->
+        :ok
+
+      path ->
+        ws_port = Application.get_env(:streamdeck_emulator, :ws_port, 0)
+
+        case StreamdeckEmulator.Session.start(path, ws_port: ws_port) do
+          {:ok, _pid} -> :ok
+          {:error, reason} -> Logger.error("could not load plugin #{path}: #{inspect(reason)}")
+        end
+    end
   end
 
   # Tell Phoenix to update the endpoint configuration

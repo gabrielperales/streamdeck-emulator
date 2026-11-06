@@ -1,0 +1,53 @@
+#!/usr/bin/env node
+// Test fixture plugin. It behaves like a native Stream Deck plugin binary:
+// it reads the launch arguments, connects to the app's WebSocket and answers:
+//   willAppear / didReceiveSettings -> setTitle(settings.title), if set
+//   keyDown                         -> setTitle("pressed <n>")
+//   keyUp                           -> showOk
+//   sendToPlugin                    -> sendToPropertyInspector({echo: payload})
+// It logs every event it receives to stdout and exits when the socket closes.
+const args = {};
+for (let i = 2; i < process.argv.length; i += 2) {
+  args[process.argv[i].replace(/^-/, "")] = process.argv[i + 1];
+}
+
+const ws = new WebSocket(`ws://127.0.0.1:${args.port}`);
+const send = (msg) => ws.send(JSON.stringify(msg));
+let presses = 0;
+
+ws.addEventListener("open", () => {
+  // Register with a binary frame, as the ObjC SDK does.
+  ws.send(Buffer.from(JSON.stringify({ event: args.registerEvent, uuid: args.pluginUUID })));
+  console.log("registered");
+});
+
+ws.addEventListener("message", (e) => {
+  const msg = JSON.parse(e.data);
+  const { context, payload = {} } = msg;
+  console.log(`received ${msg.event}`);
+
+  switch (msg.event) {
+    case "willAppear":
+    case "didReceiveSettings":
+      if (payload.settings && payload.settings.title !== undefined) {
+        send({ event: "setTitle", context, payload: { title: payload.settings.title } });
+      }
+      break;
+    case "keyDown":
+      presses += 1;
+      send({ event: "setTitle", context, payload: { title: `pressed ${presses}` } });
+      break;
+    case "keyUp":
+      send({ event: "showOk", context });
+      break;
+    case "sendToPlugin":
+      send({ event: "sendToPropertyInspector", context, payload: { echo: payload } });
+      break;
+  }
+});
+
+ws.addEventListener("close", () => process.exit(0));
+ws.addEventListener("error", (e) => {
+  console.error(`socket error: ${e.message}`);
+  process.exit(1);
+});

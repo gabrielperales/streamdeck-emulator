@@ -35,3 +35,6 @@ streamdeck_emulator-*.tar
 npm-debug.log
 /assets/node_modules/
 
+
+# Editor language server
+/.lexical/

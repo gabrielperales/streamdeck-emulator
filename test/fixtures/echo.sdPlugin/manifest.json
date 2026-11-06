@@ -1,0 +1,24 @@
+{
+  "UUID": "com.example.echo",
+  "Name": "Echo",
+  "Version": "1.0.0.0",
+  "SDKVersion": 2,
+  "Author": "Stream Deck emulator tests",
+  "Description": "Test fixture: echoes events back so the emulator can be tested without a real plugin.",
+  "CodePath": "plugin",
+  "Icon": "icon",
+  "Category": "Echo",
+  "CategoryIcon": "icon",
+  "PropertyInspectorPath": "pi.html",
+  "Actions": [
+    {
+      "UUID": "com.example.echo.action",
+      "Name": "Echo",
+      "Icon": "icon",
+      "Tooltip": "Shows what it receives",
+      "States": [{ "Image": "icon" }, { "Image": "icon" }]
+    }
+  ],
+  "OS": [{ "Platform": "mac", "MinimumVersion": "10.15" }],
+  "Software": { "MinimumVersion": "6.4" }
+}
