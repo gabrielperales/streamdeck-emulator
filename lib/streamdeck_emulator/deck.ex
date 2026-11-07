@@ -81,7 +81,7 @@ defmodule StreamdeckEmulator.Deck do
       "application" => %{
         "font" => ".AppleSystemUIFont",
         "language" => "en",
-        "platform" => "mac",
+        "platform" => Manifest.platform(),
         "platformVersion" => "15.0.0",
         "version" => "6.4.0"
       },

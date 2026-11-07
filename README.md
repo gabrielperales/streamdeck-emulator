@@ -69,9 +69,26 @@ folder or `.streamDeckPlugin` file onto the window.
 Burrito.
 
 ```sh
-mix ex_tauri.dev              # the app in a native window, with live reload
-MIX_ENV=prod mix desktop.build  # .app and .dmg in src-tauri/target/release/bundle/
+mix ex_tauri.dev                    # the app in a native window, with live reload
+MIX_ENV=prod mix desktop.build      # this machine's target
+MIX_ENV=prod mix desktop.build --target universal-apple-darwin
 ```
+
+`mix desktop.build` builds the backend with Burrito, names it the way Tauri's
+`externalBin` expects, and runs `tauri build`. Targets:
+`universal-apple-darwin` (or either Mac architecture), `x86_64-unknown-linux-gnu`
+(.deb, AppImage) and `x86_64-pc-windows-msvc` (.msi, NSIS). Burrito builds any
+target's backend from macOS or Linux (Windows needs `7z`), but Tauri builds each
+shell only on its own OS, so the
+[Desktop app workflow](.github/workflows/desktop.yml) builds every backend on
+Linux (`--sidecar-only`), then bundles on macOS, Linux and Windows runners. Each
+runner first runs `e2e/smoke-sidecar.mjs` against its backend: it starts it,
+loads the echo fixture as a Node.js plugin and presses a key. A `v*` tag
+publishes the bundles as a draft release.
+
+JavaScript plugins (a `.js`, `.mjs` or `.cjs` `CodePath`, the SDK v2 default)
+run with `node` from `PATH`, or `STREAMDECK_NODE`. On Linux, where the Stream
+Deck app does not exist, those are the only plugins that can run.
 
 Inside the app, the HTTP server only answers the app's own window: the shell
 hands the backend a random token at launch (`ExTauri.Token`), and every request

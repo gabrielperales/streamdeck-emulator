@@ -55,6 +55,17 @@ defmodule StreamdeckEmulator.SessionTest do
     assert Enum.any?(Deck.log(), &(&1.source == :system and &1.data =~ "was not executable"))
   end
 
+  @tag :tmp_dir
+  test "runs a JavaScript plugin with Node.js", %{tmp_dir: tmp_dir} do
+    {:ok, _} = Session.start(node_echo(tmp_dir))
+    eventually(fn -> Deck.snapshot().plugin_connected end)
+
+    {:ok, _} = Deck.assign_action({0, 0}, echo_action())
+    :ok = Deck.key_down({0, 0})
+    eventually(fn -> title({0, 0}) == "pressed 1" end)
+    refute Enum.any?(Deck.log(), &(&1.source == :system and &1.data =~ "was not executable"))
+  end
+
   test "stopping the session stops the plugin" do
     {:ok, _} = Session.start(echo_plugin())
     eventually(fn -> Deck.snapshot().plugin_connected end)

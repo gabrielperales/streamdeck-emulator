@@ -12,6 +12,7 @@ defmodule StreamdeckEmulator.Manifest do
     :name,
     :version,
     :code_path,
+    :runtime,
     :property_inspector_path,
     :icon,
     actions: [],
@@ -33,6 +34,7 @@ defmodule StreamdeckEmulator.Manifest do
           name: String.t(),
           version: String.t() | nil,
           code_path: String.t(),
+          runtime: :native | :node,
           property_inspector_path: String.t() | nil,
           icon: String.t() | nil,
           actions: [action()],
@@ -133,8 +135,32 @@ defmodule StreamdeckEmulator.Manifest do
     end
   end
 
+  @doc """
+  The OS the emulator presents itself as to plugins: `"windows"` on Windows and
+  `"mac"` elsewhere. The Stream Deck app only exists for those two, so on Linux
+  plugins see a Mac (in practice only Node.js plugins run there).
+  """
+  @spec platform() :: String.t()
+  def platform do
+    case :os.type() do
+      {:win32, _} -> "windows"
+      _ -> "mac"
+    end
+  end
+
   # SDK v2 lets a manifest give a per-platform executable.
-  defp code_path(raw), do: raw["CodePathMac"] || raw["CodePath"]
+  defp code_path(raw) do
+    case platform() do
+      "windows" -> raw["CodePathWin"] || raw["CodePath"]
+      "mac" -> raw["CodePathMac"] || raw["CodePath"]
+    end
+  end
+
+  # The Stream Deck app runs JavaScript plugins (the default for SDK v2) with
+  # its own Node.js; anything else is launched as an executable.
+  @node_extensions ~w(.js .mjs .cjs)
+  defp runtime(code_path),
+    do: if(Path.extname(code_path) in @node_extensions, do: :node, else: :native)
 
   defp build(raw, dir) do
     top_level_pi = raw["PropertyInspectorPath"]
@@ -145,6 +171,7 @@ defmodule StreamdeckEmulator.Manifest do
       name: raw["Name"],
       version: raw["Version"],
       code_path: code_path(raw),
+      runtime: runtime(code_path(raw)),
       property_inspector_path: top_level_pi,
       icon: raw["Icon"],
       actions:

@@ -16,6 +16,28 @@ defmodule StreamdeckEmulator.Fixtures do
   end
 
   @doc """
+  Copies the echo plugin into `tmp_dir` as a JavaScript plugin (`CodePath`
+  "plugin.js", not executable), which the emulator must run with Node.js.
+  """
+  def node_echo(tmp_dir) do
+    dir = copy_echo(tmp_dir)
+    File.rename!(Path.join(dir, "plugin"), Path.join(dir, "plugin.js"))
+    File.chmod!(Path.join(dir, "plugin.js"), 0o644)
+
+    manifest = Path.join(dir, "manifest.json")
+
+    manifest
+    |> File.read!()
+    |> Jason.decode!()
+    |> Map.put("CodePath", "plugin.js")
+    |> Map.put("Nodejs", %{"Version" => "20"})
+    |> Jason.encode!()
+    |> then(&File.write!(manifest, &1))
+
+    dir
+  end
+
+  @doc """
   Zips the echo plugin into a `.streamDeckPlugin` package in `tmp_dir`. Like real
   packages, the archive does not keep the executable bit.
   """

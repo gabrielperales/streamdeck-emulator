@@ -19,6 +19,12 @@ defmodule StreamdeckEmulator.ManifestTest do
            ] = manifest.actions
   end
 
+  @tag :tmp_dir
+  test "tells native plugins from JavaScript ones", %{tmp_dir: tmp_dir} do
+    assert {:ok, %{runtime: :native}} = Manifest.load(echo_plugin())
+    assert {:ok, %{runtime: :node, code_path: "plugin.js"}} = Manifest.load(node_echo(tmp_dir))
+  end
+
   test "resolves extension-less images" do
     {:ok, manifest} = Manifest.load(echo_plugin())
     assert Manifest.image_file(manifest, "icon") == Path.join(echo_plugin(), "icon.svg")

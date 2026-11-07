@@ -33,8 +33,10 @@ defmodule StreamdeckEmulator.MixProject do
   end
 
   # The desktop app's backend, wrapped by Burrito into one executable that the
-  # Tauri shell runs as its sidecar (see `mix ex_tauri.build`). BURRITO_SKIP
-  # builds a plain release, as `mix ex_tauri.dev --sidecar release` expects.
+  # Tauri shell runs as its sidecar. Targets are named after Rust target triples
+  # so `mix desktop.build` can hand each one to Tauri; it builds one at a time
+  # with BURRITO_TARGET. BURRITO_SKIP builds a plain release, as
+  # `mix ex_tauri.dev --sidecar release` expects.
   defp releases do
     [
       streamdeck_emulator_desktop: [
@@ -43,7 +45,10 @@ defmodule StreamdeckEmulator.MixProject do
             if(System.get_env("BURRITO_SKIP") == "true", do: [], else: [&Burrito.wrap/1]),
         burrito: [
           targets: [
-            "aarch64-apple-darwin": [os: :darwin, cpu: :aarch64]
+            "aarch64-apple-darwin": [os: :darwin, cpu: :aarch64],
+            "x86_64-apple-darwin": [os: :darwin, cpu: :x86_64],
+            "x86_64-unknown-linux-gnu": [os: :linux, cpu: :x86_64],
+            "x86_64-pc-windows-msvc": [os: :windows, cpu: :x86_64]
           ]
         ]
       ]
@@ -106,9 +111,6 @@ defmodule StreamdeckEmulator.MixProject do
         "esbuild streamdeck_emulator --minify",
         "phx.digest"
       ],
-      # Builds the desktop app (src-tauri/target/release/bundle/). ex_tauri.build
-      # makes the release but not the digested assets prod serves.
-      "desktop.build": ["compile", "assets.deploy", "ex_tauri.build"],
       precommit: ["compile --warnings-as-errors", "deps.unlock --unused", "format", "test"]
     ]
   end
