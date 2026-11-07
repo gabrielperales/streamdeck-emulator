@@ -388,40 +388,64 @@ defmodule StreamdeckEmulatorWeb.DeckLive do
   # The pairing QR code. Its URL carries the pairing token, so whoever scans it
   # can press keys until phone access is turned off.
   defp phone_access(assigns) do
-    assigns = assign(assigns, qr: assigns.remote.url && qr_svg(assigns.remote.url))
+    url = assigns.remote.url
+
+    assigns =
+      assign(assigns,
+        qr: url && qr_svg(url),
+        # One element per pairing code: a new code starts collapsed, and
+        # phx-update="ignore" keeps LiveView from closing an open one.
+        code_id:
+          url && :crypto.hash(:sha256, url) |> Base.encode16(case: :lower) |> binary_part(0, 12)
+      )
 
     ~H"""
     <section
       id="phone-access"
-      class="mt-4 flex flex-wrap items-center gap-6 rounded-2xl border border-sky-400/40 bg-base-100 p-5"
+      class="mt-4 rounded-2xl border border-sky-400/40 bg-base-100 px-5 py-3 text-sm"
     >
       <%= if @qr do %>
-        <div id="pairing-qr" class="rounded-xl bg-white p-3 [&_svg]:block [&_svg]:size-44">
-          {Phoenix.HTML.raw(@qr)}
-        </div>
-        <div class="min-w-0 max-w-md space-y-2 text-sm">
-          <h2 class="font-semibold">Scan with a phone on the same network</h2>
-          <p class="text-base-content/70">
-            It opens the keys full screen. Add it to the home screen to keep it at hand.
-          </p>
-          <p class="text-base-content/70">
-            Anyone who scans this code can press the keys, which run the plugin's actions.
-            Stopping phone access unpairs every phone; starting it again makes a new code.
-          </p>
-          <p id="pairing-host" class="font-mono text-xs text-base-content/60">
-            http://{@remote.host}:{@remote.port}/remote
-          </p>
-          <p class="text-xs text-base-content/60">
-            If the phone cannot load it, allow incoming connections for the emulator in
-            this computer's firewall.
-          </p>
-          <p :if={length(@remote.hosts) > 1} class="text-xs text-base-content/60">
-            Other addresses of this computer: {Enum.join(tl(@remote.hosts), ", ")}
-          </p>
-        </div>
+        <details id={"pairing-#{@code_id}"} phx-update="ignore" class="group">
+          <summary class="flex cursor-pointer list-none items-center gap-2 py-1 [&::-webkit-details-marker]:hidden">
+            <span class="size-2 rounded-full bg-sky-400"></span>
+            <span class="font-medium">Phone access is on</span>
+            <span class="text-base-content/60">· Show the QR code to pair a phone</span>
+            <.icon
+              name="hero-chevron-down"
+              class="ml-auto size-4 text-base-content/60 transition group-open:rotate-180"
+            />
+          </summary>
+
+          <div class="mt-3 flex flex-wrap items-center gap-6 pb-2">
+            <div id="pairing-qr" class="rounded-xl bg-white p-3 [&_svg]:block [&_svg]:size-44">
+              {Phoenix.HTML.raw(@qr)}
+            </div>
+            <div class="min-w-0 max-w-md space-y-2">
+              <h2 class="font-semibold">Scan with a phone on the same network</h2>
+              <p class="text-base-content/70">
+                It opens the keys full screen. Add it to the home screen to keep it at hand.
+              </p>
+              <p class="text-base-content/70">
+                Anyone who scans this code can press the keys, which run the plugin's actions.
+                Stopping phone access unpairs every phone; starting it again makes a new code.
+              </p>
+              <p id="pairing-host" class="font-mono text-xs text-base-content/60">
+                http://{@remote.host}:{@remote.port}/remote
+              </p>
+              <p class="text-xs text-base-content/60">
+                If the phone cannot load it, allow incoming connections for the emulator in
+                this computer's firewall.
+              </p>
+              <p :if={length(@remote.hosts) > 1} class="text-xs text-base-content/60">
+                Other addresses of this computer: {Enum.join(tl(@remote.hosts), ", ")}
+              </p>
+            </div>
+          </div>
+        </details>
       <% else %>
-        <p class="text-sm text-base-content/70">
-          This computer has no address on a local network, so phones cannot reach it.
+        <p class="py-1 text-base-content/70">
+          Phone access is on, but this computer has no address on a local network, so phones
+          cannot reach it.
         </p>
       <% end %>
     </section>

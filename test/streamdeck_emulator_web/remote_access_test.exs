@@ -86,7 +86,12 @@ defmodule StreamdeckEmulatorWeb.RemoteAccessTest do
     view |> element("#toggle-remote") |> render_click()
     assert Remote.enabled?()
     assert has_element?(view, "#phone-access")
-    if Remote.status().host, do: assert(has_element?(view, "#pairing-qr svg"))
+
+    if Remote.status().host do
+      # The code is there, but collapsed until asked for.
+      assert has_element?(view, "#pairing-qr svg")
+      assert has_element?(view, "#phone-access details:not([open]) #pairing-qr")
+    end
 
     view |> element("#toggle-remote") |> render_click()
     refute Remote.enabled?()
