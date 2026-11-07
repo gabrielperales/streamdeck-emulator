@@ -102,7 +102,9 @@ once per version. When testing a rebuild with the same version, delete
 `streamdeck_emulator_desktop_*` there first, or the app keeps running the old
 build.
 
-The app icon's source is `desktop/app-icon.svg`; regenerate the icons with
+The app icon's source is `desktop/app-icon.svg`. Render it to a PNG with a
+transparent background with `node desktop/render-icon.mjs` (it uses the e2e
+tests' Chromium), then regenerate the icons with
 `mix ex_tauri.icon desktop/app-icon.png`.
 
 ## Control API
