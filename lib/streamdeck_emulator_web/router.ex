@@ -17,7 +17,13 @@ defmodule StreamdeckEmulatorWeb.Router do
   scope "/", StreamdeckEmulatorWeb do
     pipe_through :browser
 
-    get "/", PageController, :home
+    live "/", DeckLive
+  end
+
+  # Files from the loaded plugin, served from the emulator's origin so the
+  # Property Inspector iframe is same-origin with the UI.
+  scope "/plugin", StreamdeckEmulatorWeb do
+    get "/*path", PluginFileController, :show
   end
 
   # Other scopes may use custom stacks.

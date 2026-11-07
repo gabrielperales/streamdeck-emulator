@@ -36,5 +36,5 @@ npm-debug.log
 /assets/node_modules/
 
 
-# Editor language server
-/.lexical/
+# Local editor settings
+/.vscode/

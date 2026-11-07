@@ -35,6 +35,12 @@ defmodule StreamdeckEmulator.Deck do
 
   def subscribe, do: Phoenix.PubSub.subscribe(@pubsub, @topic)
 
+  @doc false
+  def broadcast(message), do: Phoenix.PubSub.broadcast(@pubsub, @topic, message)
+
+  @doc "Whether a plugin session (and so a Deck) is running."
+  def running?, do: Process.whereis(__MODULE__) != nil
+
   @doc "The current deck state, without the log."
   def snapshot, do: GenServer.call(__MODULE__, :snapshot)
 

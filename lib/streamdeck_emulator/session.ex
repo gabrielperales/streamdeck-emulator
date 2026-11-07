@@ -3,7 +3,8 @@ defmodule StreamdeckEmulator.Session do
   One loaded plugin: its Deck, WebSocket port and running process.
 
   At most one session runs at a time. `start/2` takes a `.sdPlugin` folder or a
-  `.streamDeckPlugin` package.
+  `.streamDeckPlugin` package. Both functions broadcast `{:session, :started}` or
+  `{:session, :stopped}` on the Deck's PubSub topic.
 
   Options:
 
@@ -22,10 +23,14 @@ defmodule StreamdeckEmulator.Session do
          {:ok, manifest} <- Manifest.load(dir) do
       stop()
 
-      DynamicSupervisor.start_child(
-        @sessions,
-        {__MODULE__, Keyword.put(opts, :manifest, manifest)}
-      )
+      with {:ok, pid} <-
+             DynamicSupervisor.start_child(
+               @sessions,
+               {__MODULE__, Keyword.put(opts, :manifest, manifest)}
+             ) do
+        Deck.broadcast({:session, :started})
+        {:ok, pid}
+      end
     end
   end
 
@@ -33,6 +38,7 @@ defmodule StreamdeckEmulator.Session do
   def stop do
     for {_, pid, _, _} <- DynamicSupervisor.which_children(@sessions), is_pid(pid) do
       DynamicSupervisor.terminate_child(@sessions, pid)
+      Deck.broadcast({:session, :stopped})
     end
 
     :ok
