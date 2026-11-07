@@ -15,6 +15,8 @@ defmodule StreamdeckEmulator.Application do
        query: Application.get_env(:streamdeck_emulator, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: StreamdeckEmulator.PubSub},
       {DynamicSupervisor, name: StreamdeckEmulator.SessionSupervisor, strategy: :one_for_one},
+      {StreamdeckEmulator.Remote,
+       port: Application.get_env(:streamdeck_emulator, :remote_port, 0)},
       # In the desktop app, stops the backend (and so the plugin) when the window
       # goes away. Elsewhere there is no shell to watch.
       if(StreamdeckEmulator.Desktop.shell?(), do: ExTauri.ShutdownManager),

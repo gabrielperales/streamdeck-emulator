@@ -91,7 +91,8 @@ defmodule StreamdeckEmulator.MixProject do
       {:dns_cluster, "~> 0.2.0"},
       {:bandit, "~> 1.5"},
       {:websock_adapter, "~> 0.5"},
-      {:ex_tauri, "~> 0.7.1"}
+      {:ex_tauri, "~> 0.7.1"},
+      {:eqrcode, "~> 0.2.1"}
     ]
   end
 

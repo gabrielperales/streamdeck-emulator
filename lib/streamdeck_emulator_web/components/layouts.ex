@@ -44,6 +44,22 @@ defmodule StreamdeckEmulatorWeb.Layouts do
   end
 
   @doc """
+  Full-screen layout for the phone view: no page chrome, dark, and padded for
+  the phone's safe areas (notch, home indicator).
+  """
+  attr :flash, :map, required: true
+  slot :inner_block, required: true
+
+  def remote(assigns) do
+    ~H"""
+    <div class="fixed inset-0 flex flex-col bg-zinc-950 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] text-zinc-100">
+      {render_slot(@inner_block)}
+    </div>
+    <.flash_group flash={@flash} />
+    """
+  end
+
+  @doc """
   Shows the flash group with standard titles and content.
 
   ## Examples

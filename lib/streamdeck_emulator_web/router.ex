@@ -18,7 +18,14 @@ defmodule StreamdeckEmulatorWeb.Router do
   scope "/", StreamdeckEmulatorWeb do
     pipe_through :browser
 
-    live "/", DeckLive
+    live_session :local, on_mount: {StreamdeckEmulatorWeb.RemoteAuth, :local} do
+      live "/", DeckLive
+    end
+
+    # The phone view (see StreamdeckEmulator.Remote).
+    live_session :remote, on_mount: {StreamdeckEmulatorWeb.RemoteAuth, :remote} do
+      live "/remote", RemoteLive
+    end
   end
 
   # Files from the loaded plugin, served from the emulator's origin so the

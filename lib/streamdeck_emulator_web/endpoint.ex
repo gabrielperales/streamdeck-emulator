@@ -46,6 +46,6 @@ defmodule StreamdeckEmulatorWeb.Endpoint do
   plug Plug.MethodOverride
   plug Plug.Head
   plug Plug.Session, @session_options
-  plug StreamdeckEmulatorWeb.DesktopToken
+  plug StreamdeckEmulatorWeb.Access
   plug StreamdeckEmulatorWeb.Router
 end

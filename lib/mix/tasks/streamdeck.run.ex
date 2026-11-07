@@ -17,21 +17,30 @@ defmodule Mix.Tasks.Streamdeck.Run do
     * `--layout FILE` - JSON file of keys to place once the plugin is loaded
       (see `StreamdeckEmulator.Layout`)
     * `--open` - open the UI in the default browser
+    * `--remote` - let phones on the local network use the deck right away;
+      the ready line then carries `remote_url`, the pairing URL (see
+      `StreamdeckEmulator.Remote`)
 
   When everything is up it prints one line that scripts can wait for:
 
       streamdeck-emulator ready {"url":"http://127.0.0.1:4000","ws_port":53211,"plugin":"/path/to/x.sdPlugin"}
 
-  It builds the CSS and JS once if they are missing, and runs without the
-  development file watchers, so it suits CI.
+  It builds the CSS and JS first and runs without the development file
+  watchers, so it suits CI.
   """
 
   use Mix.Task
 
-  alias StreamdeckEmulator.{Layout, Session, SocketServer}
+  alias StreamdeckEmulator.{Layout, Remote, Session, SocketServer}
   alias StreamdeckEmulatorWeb.Endpoint
 
-  @switches [http_port: :integer, ws_port: :integer, layout: :string, open: :boolean]
+  @switches [
+    http_port: :integer,
+    ws_port: :integer,
+    layout: :string,
+    open: :boolean,
+    remote: :boolean
+  ]
 
   @impl true
   def run(args) do
@@ -50,11 +59,13 @@ defmodule Mix.Tasks.Streamdeck.Run do
     url = "http://127.0.0.1:#{http_port}"
 
     ws_port = if plugin, do: load_plugin!(plugin, opts, layout)
+    remote_url = if opts[:remote], do: enable_remote!()
 
-    Mix.shell().info(
-      "streamdeck-emulator ready " <>
-        Jason.encode!(%{url: url, ws_port: ws_port, plugin: plugin && Path.expand(plugin)})
-    )
+    ready =
+      %{url: url, ws_port: ws_port, plugin: plugin && Path.expand(plugin)}
+      |> then(&if(opts[:remote], do: Map.put(&1, :remote_url, remote_url), else: &1))
+
+    Mix.shell().info("streamdeck-emulator ready " <> Jason.encode!(ready))
 
     if opts[:open], do: open(url)
 
@@ -80,13 +91,11 @@ defmodule Mix.Tasks.Streamdeck.Run do
     end
   end
 
+  # Always rebuild: the JS bundle carries the LiveViews' colocated hooks, so
+  # assets from an older build break the UI. Building takes about a second.
   defp ensure_assets! do
-    unless File.exists?("priv/static/assets/css/app.css") and
-             File.exists?("priv/static/assets/js/app.js") do
-      Mix.shell().info("Building assets…")
-      Mix.Task.run("assets.setup")
-      Mix.Task.run("assets.build")
-    end
+    Mix.Task.run("assets.setup")
+    Mix.Task.run("assets.build")
   end
 
   defp configure!(opts) do
@@ -122,6 +131,20 @@ defmodule Mix.Tasks.Streamdeck.Run do
     case Layout.apply(layout) do
       :ok -> SocketServer.port()
       {:error, message} -> Mix.raise(message)
+    end
+  end
+
+  defp enable_remote! do
+    case Remote.enable() do
+      {:ok, %{url: nil}} ->
+        Mix.shell().error("Phone access is on, but this computer has no local network address.")
+        nil
+
+      {:ok, %{url: url}} ->
+        url
+
+      {:error, reason} ->
+        Mix.raise("cannot listen on the network: #{inspect(reason)}")
     end
   end
 

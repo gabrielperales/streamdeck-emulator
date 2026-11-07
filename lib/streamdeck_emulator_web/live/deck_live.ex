@@ -9,14 +9,18 @@ defmodule StreamdeckEmulatorWeb.DeckLive do
   use StreamdeckEmulatorWeb, :live_view
   use ExTauri.LiveView
 
-  alias StreamdeckEmulator.{Deck, Desktop, Manifest, Session, SocketServer}
-  alias StreamdeckEmulator.Deck.Key
+  alias StreamdeckEmulator.{Deck, Desktop, Manifest, Remote, Session, SocketServer}
+  alias StreamdeckEmulatorWeb.DeckComponents
 
   @log_limit 300
 
   @impl true
   def mount(_params, _session, socket) do
-    if connected?(socket), do: Deck.subscribe()
+    if connected?(socket) do
+      Deck.subscribe()
+      Remote.subscribe()
+    end
+
     desktop? = Desktop.shell?()
 
     socket =
@@ -25,7 +29,8 @@ defmodule StreamdeckEmulatorWeb.DeckLive do
         selected: nil,
         load_errors: [],
         load_form: to_form(%{"path" => ""}),
-        desktop?: desktop?
+        desktop?: desktop?,
+        remote: Remote.status()
       )
       |> load_deck()
       |> subscribe_to_drops(desktop? and connected?(socket))
@@ -37,7 +42,7 @@ defmodule StreamdeckEmulatorWeb.DeckLive do
 
   @impl true
   def handle_event("key_down", params, socket) do
-    with {:ok, coords} <- coords(params) do
+    with {:ok, coords} <- DeckComponents.parse_coords(params) do
       if socket.assigns.deck, do: Deck.key_down(coords)
       {:noreply, assign(socket, selected: coords)}
     else
@@ -46,7 +51,8 @@ defmodule StreamdeckEmulatorWeb.DeckLive do
   end
 
   def handle_event("key_up", params, socket) do
-    with {:ok, coords} <- coords(params), true <- socket.assigns.deck != nil do
+    with {:ok, coords} <- DeckComponents.parse_coords(params),
+         true <- socket.assigns.deck != nil do
       Deck.key_up(coords)
     end
 
@@ -116,6 +122,22 @@ defmodule StreamdeckEmulatorWeb.DeckLive do
     {:noreply, socket}
   end
 
+  def handle_event("enable_remote", _params, socket) do
+    case Remote.enable() do
+      {:ok, status} ->
+        {:noreply, assign(socket, remote: status)}
+
+      {:error, reason} ->
+        {:noreply,
+         put_flash(socket, :error, "Could not listen on the network: #{inspect(reason)}")}
+    end
+  end
+
+  def handle_event("disable_remote", _params, socket) do
+    Remote.disable()
+    {:noreply, assign(socket, remote: Remote.status())}
+  end
+
   def handle_event("clear_log", _params, socket),
     do: {:noreply, stream(socket, :log, [], reset: true)}
 
@@ -132,6 +154,7 @@ defmodule StreamdeckEmulatorWeb.DeckLive do
     do: {:noreply, stream_insert(socket, :log, entry, at: 0, limit: @log_limit)}
 
   def handle_info({:session, _event}, socket), do: {:noreply, load_deck(socket)}
+  def handle_info({:remote, status}, socket), do: {:noreply, assign(socket, remote: status)}
 
   defp load_plugin(socket, path) do
     ws_port = Application.get_env(:streamdeck_emulator, :ws_port, 0)
@@ -179,7 +202,8 @@ defmodule StreamdeckEmulatorWeb.DeckLive do
       <div :if={@desktop?} id="tauri-bridge" phx-hook="TauriHook" class="hidden"></div>
 
       <%= if @deck do %>
-        <.plugin_header deck={@deck} ws_port={@ws_port} />
+        <.plugin_header deck={@deck} ws_port={@ws_port} remote={@remote} />
+        <.phone_access :if={@remote.enabled} remote={@remote} />
 
         <div class="mt-6 grid gap-6 lg:grid-cols-[auto_minmax(0,1fr)]">
           <.device deck={@deck} selected={@selected} />
@@ -191,47 +215,6 @@ defmodule StreamdeckEmulatorWeb.DeckLive do
         <.load_panel form={@load_form} errors={@load_errors} desktop?={@desktop?} />
       <% end %>
     </Layouts.app>
-
-    <script :type={Phoenix.LiveView.ColocatedHook} name=".Key">
-      // A key sends keyDown when pressed and keyUp when released, like hardware,
-      // so long presses work. Space and Enter press it from the keyboard.
-      export default {
-        mounted() {
-          const coords = () => ({col: this.el.dataset.col, row: this.el.dataset.row})
-          let down = false
-          const press = () => {
-            if (down) return
-            down = true
-            this.pushEvent("key_down", coords())
-          }
-          const release = () => {
-            if (!down) return
-            down = false
-            this.pushEvent("key_up", coords())
-          }
-          const isKey = (e) => e.key === " " || e.key === "Enter"
-
-          this.el.addEventListener("pointerdown", (e) => {
-            if (e.button !== 0) return
-            this.el.setPointerCapture(e.pointerId)
-            press()
-          })
-          this.el.addEventListener("pointerup", release)
-          this.el.addEventListener("pointercancel", release)
-          this.el.addEventListener("keydown", (e) => {
-            if (!isKey(e)) return
-            e.preventDefault()
-            if (!e.repeat) press()
-          })
-          this.el.addEventListener("keyup", (e) => {
-            if (!isKey(e)) return
-            e.preventDefault()
-            release()
-          })
-          this.el.addEventListener("blur", release)
-        }
-      }
-    </script>
 
     <script :type={Phoenix.LiveView.ColocatedHook} name=".PropertyInspector">
       // Plays the Stream Deck app's part once the PI page has loaded: it calls the
@@ -348,13 +331,14 @@ defmodule StreamdeckEmulatorWeb.DeckLive do
 
   attr :deck, :map, required: true
   attr :ws_port, :integer
+  attr :remote, :map, required: true
 
   defp plugin_header(assigns) do
     ~H"""
     <header class="flex flex-wrap items-center gap-x-6 gap-y-3">
       <img
-        :if={plugin_url(@deck.manifest, @deck.manifest.icon)}
-        src={plugin_url(@deck.manifest, @deck.manifest.icon)}
+        :if={DeckComponents.plugin_url(@deck.manifest, @deck.manifest.icon)}
+        src={DeckComponents.plugin_url(@deck.manifest, @deck.manifest.icon)}
         alt=""
         class="size-10 rounded-lg"
       />
@@ -372,16 +356,79 @@ defmodule StreamdeckEmulatorWeb.DeckLive do
         ws://127.0.0.1:<span id="ws-port">{@ws_port}</span>
       </p>
 
-      <button
-        id="unload-plugin"
-        phx-click="unload_plugin"
-        class="ml-auto rounded-lg border border-base-300 px-3 py-1.5 text-sm transition hover:bg-base-300"
-      >
-        Unload
-      </button>
+      <div class="ml-auto flex gap-2">
+        <button
+          id="toggle-remote"
+          phx-click={if @remote.enabled, do: "disable_remote", else: "enable_remote"}
+          class={[
+            "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm transition",
+            if(@remote.enabled,
+              do: "border-sky-400 bg-sky-400/10 text-sky-700 hover:bg-sky-400/20 dark:text-sky-300",
+              else: "border-base-300 hover:bg-base-300"
+            )
+          ]}
+        >
+          <.icon name="hero-device-phone-mobile" class="size-4" />
+          {if @remote.enabled, do: "Stop phone access", else: "Use from a phone"}
+        </button>
+        <button
+          id="unload-plugin"
+          phx-click="unload_plugin"
+          class="rounded-lg border border-base-300 px-3 py-1.5 text-sm transition hover:bg-base-300"
+        >
+          Unload
+        </button>
+      </div>
     </header>
     """
   end
+
+  attr :remote, :map, required: true
+
+  # The pairing QR code. Its URL carries the pairing token, so whoever scans it
+  # can press keys until phone access is turned off.
+  defp phone_access(assigns) do
+    assigns = assign(assigns, qr: assigns.remote.url && qr_svg(assigns.remote.url))
+
+    ~H"""
+    <section
+      id="phone-access"
+      class="mt-4 flex flex-wrap items-center gap-6 rounded-2xl border border-sky-400/40 bg-base-100 p-5"
+    >
+      <%= if @qr do %>
+        <div id="pairing-qr" class="rounded-xl bg-white p-3 [&_svg]:block [&_svg]:size-44">
+          {Phoenix.HTML.raw(@qr)}
+        </div>
+        <div class="min-w-0 max-w-md space-y-2 text-sm">
+          <h2 class="font-semibold">Scan with a phone on the same network</h2>
+          <p class="text-base-content/70">
+            It opens the keys full screen. Add it to the home screen to keep it at hand.
+          </p>
+          <p class="text-base-content/70">
+            Anyone who scans this code can press the keys, which run the plugin's actions.
+            Stopping phone access unpairs every phone; starting it again makes a new code.
+          </p>
+          <p id="pairing-host" class="font-mono text-xs text-base-content/60">
+            http://{@remote.host}:{@remote.port}/remote
+          </p>
+          <p class="text-xs text-base-content/60">
+            If the phone cannot load it, allow incoming connections for the emulator in
+            this computer's firewall.
+          </p>
+          <p :if={length(@remote.hosts) > 1} class="text-xs text-base-content/60">
+            Other addresses of this computer: {Enum.join(tl(@remote.hosts), ", ")}
+          </p>
+        </div>
+      <% else %>
+        <p class="text-sm text-base-content/70">
+          This computer has no address on a local network, so phones cannot reach it.
+        </p>
+      <% end %>
+    </section>
+    """
+  end
+
+  defp qr_svg(url), do: url |> EQRCode.encode() |> EQRCode.svg(width: 176)
 
   attr :plugin, :map, required: true
   attr :connected, :boolean, required: true
@@ -428,7 +475,7 @@ defmodule StreamdeckEmulatorWeb.DeckLive do
     >
       <div class="grid gap-3" style={"grid-template-columns: repeat(#{@columns}, minmax(0, 1fr))"}>
         <%= for row <- 0..(@rows - 1), column <- 0..(@columns - 1) do %>
-          <.key
+          <DeckComponents.key
             coords={{column, row}}
             key={@deck.keys[{column, row}]}
             manifest={@deck.manifest}
@@ -437,70 +484,6 @@ defmodule StreamdeckEmulatorWeb.DeckLive do
         <% end %>
       </div>
     </section>
-    """
-  end
-
-  attr :coords, :any, required: true
-  attr :key, :any
-  attr :manifest, :any, required: true
-  attr :selected, :boolean, default: false
-
-  defp key(assigns) do
-    {column, row} = assigns.coords
-
-    assigns =
-      assign(assigns, column: column, row: row, view: key_view(assigns.manifest, assigns.key))
-
-    ~H"""
-    <button
-      id={"key-#{@column}-#{@row}"}
-      type="button"
-      phx-hook=".Key"
-      data-col={@column}
-      data-row={@row}
-      aria-label={"Key #{@column},#{@row}" <> if(@key, do: ": #{@view.name}", else: " (empty)")}
-      aria-pressed={to_string(@selected)}
-      class={[
-        "relative size-16 select-none overflow-hidden rounded-xl bg-black shadow-inner transition sm:size-20",
-        "active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400",
-        @selected && "ring-2 ring-sky-400 ring-offset-2 ring-offset-zinc-900",
-        !@key && "bg-zinc-800/60"
-      ]}
-    >
-      <img
-        :if={@view.image}
-        src={@view.image}
-        alt=""
-        draggable="false"
-        class="pointer-events-none absolute inset-0 size-full object-cover"
-      />
-      <span
-        :if={@view.title}
-        data-role="title"
-        class={[
-          "pointer-events-none absolute inset-x-1 whitespace-pre-line text-center text-[11px] font-semibold leading-tight [text-shadow:0_1px_2px_rgb(0_0_0/0.9)]",
-          @view.align
-        ]}
-        style={"color: #{@view.color}"}
-      >{@view.title}</span>
-      <span
-        :if={@view.feedback}
-        data-role="feedback"
-        data-feedback={@view.feedback}
-        class="pointer-events-none absolute inset-0 grid place-items-center bg-black/55"
-      >
-        <.icon
-          :if={@view.feedback == :ok}
-          name="hero-check-circle-solid"
-          class="size-10 text-emerald-400"
-        />
-        <.icon
-          :if={@view.feedback == :alert}
-          name="hero-exclamation-triangle-solid"
-          class="size-10 text-amber-400"
-        />
-      </span>
-    </button>
     """
   end
 
@@ -527,8 +510,8 @@ defmodule StreamdeckEmulatorWeb.DeckLive do
               class="flex w-full items-center gap-3 rounded-lg border border-base-300 p-2 text-left text-sm transition enabled:hover:border-sky-400 enabled:hover:bg-base-200 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <img
-                :if={plugin_url(@deck.manifest, action.icon)}
-                src={plugin_url(@deck.manifest, action.icon)}
+                :if={DeckComponents.plugin_url(@deck.manifest, action.icon)}
+                src={DeckComponents.plugin_url(@deck.manifest, action.icon)}
                 alt=""
                 class="size-8 rounded"
               />
@@ -685,49 +668,6 @@ defmodule StreamdeckEmulatorWeb.DeckLive do
   end
 
   ## Helpers
-
-  defp coords(%{"col" => col, "row" => row}) do
-    with {col, ""} <- Integer.parse(to_string(col)), {row, ""} <- Integer.parse(to_string(row)) do
-      {:ok, {col, row}}
-    else
-      _ -> :error
-    end
-  end
-
-  defp coords(_), do: :error
-
-  defp key_view(_manifest, nil),
-    do: %{image: nil, title: nil, align: nil, color: nil, feedback: nil, name: nil}
-
-  defp key_view(manifest, %Key{} = key) do
-    action = Manifest.action(manifest, key.action)
-    state = Enum.at(action.states, key.state) || %{}
-
-    %{
-      name: action.name,
-      image: Key.image(key) || plugin_url(manifest, state["Image"] || action.icon),
-      title: Key.title(key) || if(state["ShowTitle"] != false, do: state["Title"]),
-      align:
-        case state["TitleAlignment"] do
-          "top" -> "top-1"
-          "middle" -> "top-1/2 -translate-y-1/2"
-          _ -> "bottom-1"
-        end,
-      color: state["TitleColor"] || "#ffffff",
-      feedback:
-        case key.feedback do
-          {kind, _ref} -> kind
-          nil -> nil
-        end
-    }
-  end
-
-  defp plugin_url(manifest, name) do
-    case Manifest.image_file(manifest, name) do
-      nil -> nil
-      file -> "/plugin/" <> (file |> Path.relative_to(manifest.dir) |> URI.encode())
-    end
-  end
 
   # The PI is served from the plugin folder on the emulator's origin, so the
   # page's hook can call connectElgatoStreamDeckSocket inside the iframe.

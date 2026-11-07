@@ -32,6 +32,8 @@ config :streamdeck_emulator, StreamdeckEmulatorWeb.Endpoint,
     layout: false
   ],
   pubsub_server: StreamdeckEmulator.PubSub,
+  # This machine, plus its LAN addresses while phones may connect.
+  check_origin: {StreamdeckEmulatorWeb.Access, :origin_allowed?, []},
   live_view: [signing_salt: "IQvHuTAy"]
 
 # Configure LiveView
