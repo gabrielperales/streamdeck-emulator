@@ -68,6 +68,13 @@ defmodule StreamdeckEmulator.Deck do
   def plugin_exited(status), do: GenServer.cast(__MODULE__, {:plugin_exited, status})
   def system_log(text), do: GenServer.cast(__MODULE__, {:system_log, text})
 
+  @doc "Records console output from a Property Inspector page."
+  def pi_console(context, level, message),
+    do: GenServer.cast(__MODULE__, {:pi_console, context, level, message})
+
+  @doc "The `inActionInfo` JSON the app hands a Property Inspector for `key`."
+  def action_info(%Key{} = key), do: key |> key_event(nil) |> Map.delete("event")
+
   @doc "The `-info` / `inApplicationInfo` JSON the app hands to plugins and PIs."
   def application_info(%Manifest{} = manifest) do
     %{
@@ -268,6 +275,9 @@ defmodule StreamdeckEmulator.Deck do
   end
 
   def handle_cast({:system_log, text}, state), do: {:noreply, log(state, :system, nil, nil, text)}
+
+  def handle_cast({:pi_console, context, level, message}, state),
+    do: {:noreply, log(state, :pi_console, level, context, message)}
 
   @impl true
   def handle_info({:DOWN, _ref, :process, pid, _reason}, state) do
@@ -532,7 +542,8 @@ defmodule StreamdeckEmulator.Deck do
     state
   end
 
-  # source: :plugin | :pi | :stdout | :system; direction: :in (to the emulator) | :out | nil
+  # source: :plugin | :pi | :pi_console | :stdout | :system
+  # direction: :in (to the emulator) | :out | nil, or the console level for :pi_console
   defp log(state, source, direction, context, data) do
     entry = %{
       id: state.log_seq + 1,

@@ -87,6 +87,11 @@ defmodule StreamdeckEmulatorWeb.DeckLive do
     {:noreply, socket}
   end
 
+  def handle_event("pi_log", %{"uuid" => context, "level" => level, "message" => message}, socket) do
+    if socket.assigns.deck, do: Deck.pi_console(context, level, message)
+    {:noreply, socket}
+  end
+
   def handle_event("clear_log", _params, socket),
     do: {:noreply, stream(socket, :log, [], reset: true)}
 
@@ -123,7 +128,7 @@ defmodule StreamdeckEmulatorWeb.DeckLive do
 
         <div class="mt-6 grid gap-6 lg:grid-cols-[auto_minmax(0,1fr)]">
           <.device deck={@deck} selected={@selected} />
-          <.inspector deck={@deck} selected={@selected} />
+          <.inspector deck={@deck} selected={@selected} ws_port={@ws_port} />
         </div>
 
         <.event_log streams={@streams} />
@@ -169,6 +174,49 @@ defmodule StreamdeckEmulatorWeb.DeckLive do
             release()
           })
           this.el.addEventListener("blur", release)
+        }
+      }
+    </script>
+
+    <script :type={Phoenix.LiveView.ColocatedHook} name=".PropertyInspector">
+      // Plays the Stream Deck app's part once the PI page has loaded: it calls the
+      // page's connectElgatoStreamDeckSocket, forwards its console to the event
+      // log and sizes the frame to its content. Needs the PI on the same origin.
+      const format = (value) => {
+        if (typeof value === "string") return value
+        try { return JSON.stringify(value) } catch (_) { return String(value) }
+      }
+
+      export default {
+        mounted() {
+          const frame = this.el
+          const {port, uuid, appInfo, actionInfo} = frame.dataset
+          const report = (level, message) => this.pushEvent("pi_log", {uuid, level, message})
+
+          frame.addEventListener("load", () => {
+            const win = frame.contentWindow
+
+            for (const level of ["log", "info", "warn", "error"]) {
+              const original = win.console[level].bind(win.console)
+              win.console[level] = (...args) => {
+                original(...args)
+                report(level, args.map(format).join(" "))
+              }
+            }
+            win.addEventListener("error", (e) => report("error", e.message))
+
+            const fit = () => {
+              frame.style.height = Math.max(win.document.documentElement.scrollHeight, 160) + "px"
+            }
+            new win.ResizeObserver(fit).observe(win.document.body)
+            fit()
+
+            if (typeof win.connectElgatoStreamDeckSocket !== "function") {
+              report("error", "the page does not define connectElgatoStreamDeckSocket")
+              return
+            }
+            win.connectElgatoStreamDeckSocket(Number(port), uuid, "registerPropertyInspector", appInfo, actionInfo)
+          })
         }
       }
     </script>
@@ -293,7 +341,7 @@ defmodule StreamdeckEmulatorWeb.DeckLive do
     ~H"""
     <section
       aria-label="Device"
-      class="w-fit rounded-[2rem] bg-zinc-900 p-5 shadow-xl ring-1 ring-black/40"
+      class="w-fit self-start rounded-[2rem] bg-zinc-900 p-5 shadow-xl ring-1 ring-black/40"
     >
       <div class="grid gap-3" style={"grid-template-columns: repeat(#{@columns}, minmax(0, 1fr))"}>
         <%= for row <- 0..(@rows - 1), column <- 0..(@columns - 1) do %>
@@ -375,9 +423,11 @@ defmodule StreamdeckEmulatorWeb.DeckLive do
 
   attr :deck, :map, required: true
   attr :selected, :any
+  attr :ws_port, :integer
 
   defp inspector(assigns) do
-    assigns = assign(assigns, key: assigns.selected && assigns.deck.keys[assigns.selected])
+    key = assigns.selected && assigns.deck.keys[assigns.selected]
+    assigns = assign(assigns, key: key, pi: key && property_inspector(assigns.deck, key))
 
     ~H"""
     <section aria-label="Inspector" class="min-w-0 space-y-6">
@@ -417,7 +467,7 @@ defmodule StreamdeckEmulatorWeb.DeckLive do
           <% @key == nil -> %>
             <h2 class="font-semibold">Key {coords_label(@selected)}</h2>
             <p class="mt-1 text-sm text-base-content/70">
-              Empty. Pick an action below to place it here.
+              Empty. Pick an action above to place it here.
             </p>
           <% true -> %>
             <div class="flex items-start justify-between gap-4">
@@ -438,20 +488,52 @@ defmodule StreamdeckEmulatorWeb.DeckLive do
                 Remove
               </button>
             </div>
-            <dl class="mt-4 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
+            <dl class="mt-4 grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1 text-sm">
               <dt class="text-base-content/60">State</dt>
               <dd>{@key.state} of {@key.states}</dd>
               <dt class="text-base-content/60">Settings</dt>
               <dd>
                 <pre
                   id="key-settings"
-                  class="overflow-x-auto rounded-lg bg-base-200 p-2 font-mono text-xs"
+                  class="max-h-48 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-base-200 p-2 font-mono text-xs"
                 >{Jason.encode!(@key.settings, pretty: true)}</pre>
               </dd>
             </dl>
+
+            <.property_inspector :if={@pi} pi={@pi} key={@key} ws_port={@ws_port} />
+            <p :if={!@pi} class="mt-4 text-sm text-base-content/60">
+              This action has no Property Inspector.
+            </p>
         <% end %>
       </div>
     </section>
+    """
+  end
+
+  attr :pi, :map, required: true
+  attr :key, :any, required: true
+  attr :ws_port, :integer, required: true
+
+  # Keyed by context so selecting another key loads a fresh page, and ignored by
+  # LiveView so later renders (new settings, titles) never reload the iframe.
+  defp property_inspector(assigns) do
+    ~H"""
+    <div id={"pi-#{@key.context}"} phx-update="ignore" class="mt-4">
+      <h3 class="mb-2 text-sm font-semibold uppercase tracking-wide text-base-content/60">
+        Property Inspector
+      </h3>
+      <iframe
+        id={"pi-frame-#{@key.context}"}
+        phx-hook=".PropertyInspector"
+        src={@pi.src}
+        title="Property Inspector"
+        data-port={@ws_port}
+        data-uuid={@key.context}
+        data-app-info={@pi.app_info}
+        data-action-info={@pi.action_info}
+        class="block h-40 w-full rounded-lg border border-base-300 bg-[#2d2d2d]"
+      ></iframe>
+    </div>
     """
   end
 
@@ -564,6 +646,22 @@ defmodule StreamdeckEmulatorWeb.DeckLive do
     end
   end
 
+  # The PI is served from the plugin folder on the emulator's origin, so the
+  # page's hook can call connectElgatoStreamDeckSocket inside the iframe.
+  defp property_inspector(deck, key) do
+    case Manifest.action(deck.manifest, key.action) do
+      %{property_inspector_path: path} when is_binary(path) ->
+        %{
+          src: "/plugin/" <> URI.encode(path),
+          app_info: Jason.encode!(Deck.application_info(deck.manifest)),
+          action_info: Jason.encode!(Deck.action_info(key))
+        }
+
+      _ ->
+        nil
+    end
+  end
+
   defp action_name(manifest, uuid) do
     case Manifest.action(manifest, uuid) do
       nil -> uuid
@@ -582,11 +680,13 @@ defmodule StreamdeckEmulatorWeb.DeckLive do
   defp source_label(%{source: :pi, direction: :out}), do: "→ PI"
   defp source_label(%{source: :stdout}), do: "stdout"
   defp source_label(%{source: :system}), do: "emulator"
+  defp source_label(%{source: :pi_console, direction: level}), do: "PI #{level}"
 
   defp source_class(:plugin), do: "text-sky-600 dark:text-sky-400"
   defp source_class(:pi), do: "text-violet-600 dark:text-violet-400"
   defp source_class(:stdout), do: "text-base-content/60"
   defp source_class(:system), do: "text-amber-600 dark:text-amber-400"
+  defp source_class(:pi_console), do: "text-violet-600/70 dark:text-violet-400/70"
 
   defp error_text(error) when is_binary(error), do: error
   defp error_text(error), do: inspect(error)

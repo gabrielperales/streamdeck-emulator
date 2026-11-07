@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Echo Property Inspector</title>
+  <style>
+    body { margin: 0; padding: 12px; background: #2d2d2d; color: #d8d8d8; font: 13px -apple-system, sans-serif; }
+    label { display: flex; gap: 8px; align-items: center; }
+    input { flex: 1; background: #3d3d3d; color: inherit; border: 0; border-radius: 3px; padding: 4px 6px; }
+    button { margin-top: 8px; }
+    pre { white-space: pre-wrap; word-break: break-all; font-size: 11px; }
+  </style>
+</head>
+<body>
+  <!-- Test fixture: a minimal Property Inspector without the Elgato helpers.
+       Typing a title saves it with setSettings; Ping sends sendToPlugin, which
+       the echo plugin answers with sendToPropertyInspector. Every message the
+       PI receives is appended to #received. -->
+  <label>Title <input id="title" autocomplete="off" /></label>
+  <button id="ping" type="button">Ping plugin</button>
+  <pre id="received"></pre>
+
+  <script>
+    let websocket, uuid, action, settings = {};
+
+    function connectElgatoStreamDeckSocket(port, piUUID, registerEvent, applicationInfo, actionInfo) {
+      const info = JSON.parse(actionInfo);
+      uuid = piUUID;
+      action = info.action;
+      settings = info.payload.settings || {};
+      document.getElementById("title").value = settings.title || "";
+
+      websocket = new WebSocket("ws://localhost:" + port);
+      websocket.onopen = () => websocket.send(JSON.stringify({ event: registerEvent, uuid }));
+      websocket.onmessage = (e) => {
+        document.getElementById("received").textContent += e.data + "\n";
+      };
+      console.log("connected to port " + port);
+    }
+
+    document.getElementById("title").addEventListener("input", (e) => {
+      settings.title = e.target.value;
+      websocket.send(JSON.stringify({ event: "setSettings", context: uuid, payload: settings }));
+    });
+
+    document.getElementById("ping").addEventListener("click", () => {
+      websocket.send(JSON.stringify({ event: "sendToPlugin", context: uuid, action, payload: { ping: true } }));
+    });
+  </script>
+</body>
+</html>

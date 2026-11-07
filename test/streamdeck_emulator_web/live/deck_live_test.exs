@@ -66,6 +66,39 @@ defmodule StreamdeckEmulatorWeb.DeckLiveTest do
     eventually(fn -> has_element?(view, "#plugin-status", "Connected") end)
   end
 
+  test "embeds the Property Inspector with the arguments the app passes it", %{conn: conn} do
+    {:ok, _} = Session.start(echo_plugin())
+    {:ok, context} = Deck.assign_action({2, 0}, echo_action(), %{"title" => "x"})
+    {:ok, view, _html} = live(conn, ~p"/")
+
+    refute has_element?(view, "iframe")
+    render_hook(view, "key_down", %{"col" => "2", "row" => "0"})
+
+    frame = view |> element("#pi-frame-#{context}") |> render() |> LazyHTML.from_fragment()
+    attr = fn name -> frame |> LazyHTML.attribute(name) |> hd() end
+
+    assert attr.("src") == "/plugin/pi.html"
+    assert attr.("data-uuid") == context
+    assert attr.("data-port") == to_string(StreamdeckEmulator.SocketServer.port())
+
+    assert %{
+             "action" => "com.example.echo.action",
+             "context" => ^context,
+             "device" => "emulator-device",
+             "payload" => %{
+               "settings" => %{"title" => "x"},
+               "coordinates" => %{"column" => 2, "row" => 0}
+             }
+           } = Jason.decode!(attr.("data-action-info"))
+
+    assert %{"application" => %{"platform" => "mac"}, "plugin" => %{"uuid" => "com.example.echo"}} =
+             Jason.decode!(attr.("data-app-info"))
+
+    # Console output from the PI page lands in the event log.
+    render_hook(view, "pi_log", %{"uuid" => context, "level" => "warn", "message" => "careful"})
+    eventually(fn -> has_element?(view, "#event-log", "careful") end)
+  end
+
   describe "plugin files" do
     test "are served from the loaded plugin's folder", %{conn: conn} do
       {:ok, _} = Session.start(echo_plugin())
