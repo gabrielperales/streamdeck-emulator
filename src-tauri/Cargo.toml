@@ -1,0 +1,33 @@
+[package]
+name = "stream_deck_emulator"
+version = "0.7.1"
+default-run = "stream_deck_emulator"
+edition = "2021"
+description = ""
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri-plugin-dialog = "2"
+log = "0.4"
+serde_json = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+# webview-data-url: the loading and error pages are data: URLs.
+tauri = { version = "2", features = ["tray-icon", "webview-data-url"] }
+# 2.5 is the first with set_process_group, which the sidecar is spawned with.
+tauri-plugin-shell = "2.5"
+tauri-plugin-log = "2"
+tauri-plugin-notification = "2"
+tauri-plugin-single-instance = "2"
+
+# ExTauri.Desktop.keep_awake/1 holds an NSProcessInfo activity (App Nap).
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSObject", "NSProcessInfo", "NSString"] }
+
+[features]
+# this feature is used for production builds or when `devPath` points to the filesystem and the built-in dev server is disabled.
+# If you use cargo directly instead of tauri's cli you can use this feature flag to switch between tauri's `dev` and `build` modes.
+# DO NOT REMOVE!!
+custom-protocol = [ "tauri/custom-protocol" ]

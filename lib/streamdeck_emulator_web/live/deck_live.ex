@@ -2,12 +2,14 @@ defmodule StreamdeckEmulatorWeb.DeckLive do
   @moduledoc """
   The emulator's UI: the virtual device, the selected key's inspector, the
   plugin's actions and the event log. With no plugin loaded it shows a form to
-  load one.
+  load one. In the desktop app it also offers native file dialogs and loads a
+  plugin dropped onto the window.
   """
 
   use StreamdeckEmulatorWeb, :live_view
+  use ExTauri.LiveView
 
-  alias StreamdeckEmulator.{Deck, Manifest, Session, SocketServer}
+  alias StreamdeckEmulator.{Deck, Desktop, Manifest, Session, SocketServer}
   alias StreamdeckEmulator.Deck.Key
 
   @log_limit 300
@@ -15,11 +17,18 @@ defmodule StreamdeckEmulatorWeb.DeckLive do
   @impl true
   def mount(_params, _session, socket) do
     if connected?(socket), do: Deck.subscribe()
+    desktop? = Desktop.shell?()
 
     socket =
       socket
-      |> assign(selected: nil, load_errors: [], load_form: to_form(%{"path" => ""}))
+      |> assign(
+        selected: nil,
+        load_errors: [],
+        load_form: to_form(%{"path" => ""}),
+        desktop?: desktop?
+      )
       |> load_deck()
+      |> subscribe_to_drops(desktop? and connected?(socket))
 
     {:ok, socket}
   end
@@ -66,20 +75,35 @@ defmodule StreamdeckEmulatorWeb.DeckLive do
     {:noreply, socket}
   end
 
-  def handle_event("load_plugin", %{"path" => path}, socket) do
-    ws_port = Application.get_env(:streamdeck_emulator, :ws_port, 0)
+  def handle_event("load_plugin", %{"path" => path}, socket),
+    do: {:noreply, load_plugin(socket, String.trim(path))}
 
-    case Session.start(String.trim(path), ws_port: ws_port) do
-      {:ok, _} ->
-        {:noreply, assign(socket, load_errors: [])}
+  # Native dialogs (desktop app only). A .sdPlugin is a folder and a
+  # .streamDeckPlugin a file, and one dialog cannot pick both.
+  def handle_event("pick_plugin", %{"kind" => kind}, socket) do
+    opts =
+      case kind do
+        "folder" ->
+          [title: "Open a .sdPlugin folder", directory: true]
 
-      {:error, errors} ->
-        {:noreply,
-         assign(socket,
-           load_errors: List.wrap(errors) |> Enum.map(&error_text/1),
-           load_form: to_form(%{"path" => path})
-         )}
-    end
+        "package" ->
+          [
+            title: "Open a .streamDeckPlugin package",
+            filters: [%{name: "Stream Deck plugin", extensions: ["streamDeckPlugin"]}]
+          ]
+      end
+
+    {:noreply,
+     ExTauri.Dialog.open(socket, opts, fn
+       {:ok, %{"path" => path}}, socket when is_binary(path) ->
+         load_plugin(socket, path)
+
+       {:ok, _cancelled}, socket ->
+         socket
+
+       {:error, reason}, socket ->
+         put_flash(socket, :error, "Could not open the dialog: #{inspect(reason)}")
+     end)}
   end
 
   def handle_event("unload_plugin", _params, socket) do
@@ -95,6 +119,10 @@ defmodule StreamdeckEmulatorWeb.DeckLive do
   def handle_event("clear_log", _params, socket),
     do: {:noreply, stream(socket, :log, [], reset: true)}
 
+  # ExTauri.LiveView routes replies that have a callback; the rest (such as the
+  # acknowledgement of the drag-and-drop subscription) end up here.
+  def handle_event("tauri_" <> _kind, _params, socket), do: {:noreply, socket}
+
   ## PubSub
 
   @impl true
@@ -104,6 +132,31 @@ defmodule StreamdeckEmulatorWeb.DeckLive do
     do: {:noreply, stream_insert(socket, :log, entry, at: 0, limit: @log_limit)}
 
   def handle_info({:session, _event}, socket), do: {:noreply, load_deck(socket)}
+
+  defp load_plugin(socket, path) do
+    ws_port = Application.get_env(:streamdeck_emulator, :ws_port, 0)
+
+    case Session.start(path, ws_port: ws_port) do
+      {:ok, _} ->
+        assign(socket, load_errors: [], selected: nil)
+
+      {:error, errors} ->
+        assign(socket,
+          load_errors: List.wrap(errors) |> Enum.map(&error_text/1),
+          load_form: to_form(%{"path" => path})
+        )
+    end
+  end
+
+  # Dropping a .sdPlugin folder or .streamDeckPlugin file onto the window loads it.
+  defp subscribe_to_drops(socket, false), do: socket
+
+  defp subscribe_to_drops(socket, true) do
+    ExTauri.Event.subscribe(socket, "tauri://drag-drop", fn
+      %{"paths" => [path | _]}, socket -> load_plugin(socket, path)
+      _payload, socket -> socket
+    end)
+  end
 
   defp load_deck(socket) do
     if Deck.running?() do
@@ -123,6 +176,8 @@ defmodule StreamdeckEmulatorWeb.DeckLive do
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash}>
+      <div :if={@desktop?} id="tauri-bridge" phx-hook="TauriHook" class="hidden"></div>
+
       <%= if @deck do %>
         <.plugin_header deck={@deck} ws_port={@ws_port} />
 
@@ -133,7 +188,7 @@ defmodule StreamdeckEmulatorWeb.DeckLive do
 
         <.event_log streams={@streams} />
       <% else %>
-        <.load_panel form={@load_form} errors={@load_errors} />
+        <.load_panel form={@load_form} errors={@load_errors} desktop?={@desktop?} />
       <% end %>
     </Layouts.app>
 
@@ -225,6 +280,7 @@ defmodule StreamdeckEmulatorWeb.DeckLive do
 
   attr :form, :any, required: true
   attr :errors, :list, required: true
+  attr :desktop?, :boolean, default: false
 
   defp load_panel(assigns) do
     ~H"""
@@ -236,7 +292,34 @@ defmodule StreamdeckEmulatorWeb.DeckLive do
         package.
       </p>
 
-      <.form for={@form} id="load-form" phx-submit="load_plugin" class="mt-6">
+      <div :if={@desktop?} class="mt-6 space-y-3">
+        <div class="flex flex-wrap gap-2">
+          <button
+            id="pick-folder"
+            phx-click="pick_plugin"
+            phx-value-kind="folder"
+            class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-content transition hover:brightness-110"
+          >
+            Open .sdPlugin folder…
+          </button>
+          <button
+            id="pick-package"
+            phx-click="pick_plugin"
+            phx-value-kind="package"
+            class="rounded-lg border border-base-300 px-4 py-2 text-sm font-medium transition hover:bg-base-300"
+          >
+            Open .streamDeckPlugin…
+          </button>
+        </div>
+        <p class="text-sm text-base-content/60">Or drop either onto this window, or type a path:</p>
+      </div>
+
+      <.form
+        for={@form}
+        id="load-form"
+        phx-submit="load_plugin"
+        class={if(@desktop?, do: "mt-3", else: "mt-6")}
+      >
         <.input
           field={@form[:path]}
           type="text"

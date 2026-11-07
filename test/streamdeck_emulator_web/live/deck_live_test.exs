@@ -99,6 +99,21 @@ defmodule StreamdeckEmulatorWeb.DeckLiveTest do
     eventually(fn -> has_element?(view, "#event-log", "careful") end)
   end
 
+  test "ignores Tauri bridge replies nobody waits for", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/")
+
+    render_hook(view, "tauri_response", %{
+      "command" => "event_listen",
+      "event" => "tauri://drag-drop",
+      "ref" => "1",
+      "status" => "already_listening"
+    })
+
+    assert render(view) =~ "Load plugin"
+    # Outside the desktop app there are no native dialogs.
+    refute has_element?(view, "#pick-folder")
+  end
+
   describe "plugin files" do
     test "are served from the loaded plugin's folder", %{conn: conn} do
       {:ok, _} = Session.start(echo_plugin())

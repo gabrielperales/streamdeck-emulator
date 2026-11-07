@@ -15,6 +15,9 @@ defmodule StreamdeckEmulator.Application do
        query: Application.get_env(:streamdeck_emulator, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: StreamdeckEmulator.PubSub},
       {DynamicSupervisor, name: StreamdeckEmulator.SessionSupervisor, strategy: :one_for_one},
+      # In the desktop app, stops the backend (and so the plugin) when the window
+      # goes away. Elsewhere there is no shell to watch.
+      if(StreamdeckEmulator.Desktop.shell?(), do: ExTauri.ShutdownManager),
       # Start to serve requests, typically the last entry
       StreamdeckEmulatorWeb.Endpoint
     ]
@@ -23,7 +26,7 @@ defmodule StreamdeckEmulator.Application do
     # for other strategies and supported options
     opts = [strategy: :one_for_one, name: StreamdeckEmulator.Supervisor]
 
-    with {:ok, pid} <- Supervisor.start_link(children, opts) do
+    with {:ok, pid} <- Supervisor.start_link(Enum.reject(children, &is_nil/1), opts) do
       autostart_plugin()
       {:ok, pid}
     end

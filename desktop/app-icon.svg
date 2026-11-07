@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <!-- App icon: a generic 3×3 keypad. Source for `mix ex_tauri.icon`. -->
+  <defs>
+    <linearGradient id="body" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2b2f36"/>
+      <stop offset="1" stop-color="#15171b"/>
+    </linearGradient>
+  </defs>
+  <rect x="64" y="64" width="896" height="896" rx="200" fill="url(#body)"/>
+  <g>
+    <rect x="200" y="200" width="176" height="176" rx="36" fill="#38bdf8"/>
+    <rect x="424" y="200" width="176" height="176" rx="36" fill="#3a3f48"/>
+    <rect x="648" y="200" width="176" height="176" rx="36" fill="#3a3f48"/>
+    <rect x="200" y="424" width="176" height="176" rx="36" fill="#3a3f48"/>
+    <rect x="424" y="424" width="176" height="176" rx="36" fill="#a78bfa"/>
+    <rect x="648" y="424" width="176" height="176" rx="36" fill="#3a3f48"/>
+    <rect x="200" y="648" width="176" height="176" rx="36" fill="#3a3f48"/>
+    <rect x="424" y="648" width="176" height="176" rx="36" fill="#3a3f48"/>
+    <rect x="648" y="648" width="176" height="176" rx="36" fill="#34d399"/>
+  </g>
+</svg>

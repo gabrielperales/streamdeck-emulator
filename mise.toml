@@ -2,3 +2,6 @@
 erlang = "27.3.4.14"
 elixir = "1.20.4-otp-27"
 node = "24.12.0"
+# Desktop app (ex_tauri): Rust builds the Tauri shell; Burrito needs exactly Zig 0.16.0.
+rust = "1.99.1"
+zig = "0.16.0"

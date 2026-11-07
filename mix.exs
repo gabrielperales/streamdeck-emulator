@@ -11,7 +11,8 @@ defmodule StreamdeckEmulator.MixProject do
       aliases: aliases(),
       deps: deps(),
       compilers: [:phoenix_live_view] ++ Mix.compilers(),
-      listeners: [Phoenix.CodeReloader]
+      listeners: [Phoenix.CodeReloader],
+      releases: releases()
     ]
   end
 
@@ -21,13 +22,31 @@ defmodule StreamdeckEmulator.MixProject do
   def application do
     [
       mod: {StreamdeckEmulator.Application, []},
-      extra_applications: [:logger, :runtime_tools]
+      extra_applications: [:logger, :runtime_tools, :inets]
     ]
   end
 
   def cli do
     [
-      preferred_envs: [precommit: :test]
+      preferred_envs: [precommit: :test, "desktop.build": :prod]
+    ]
+  end
+
+  # The desktop app's backend, wrapped by Burrito into one executable that the
+  # Tauri shell runs as its sidecar (see `mix ex_tauri.build`). BURRITO_SKIP
+  # builds a plain release, as `mix ex_tauri.dev --sidecar release` expects.
+  defp releases do
+    [
+      streamdeck_emulator_desktop: [
+        steps:
+          [:assemble] ++
+            if(System.get_env("BURRITO_SKIP") == "true", do: [], else: [&Burrito.wrap/1]),
+        burrito: [
+          targets: [
+            "aarch64-apple-darwin": [os: :darwin, cpu: :aarch64]
+          ]
+        ]
+      ]
     ]
   end
 
@@ -66,7 +85,8 @@ defmodule StreamdeckEmulator.MixProject do
       {:jason, "~> 1.2"},
       {:dns_cluster, "~> 0.2.0"},
       {:bandit, "~> 1.5"},
-      {:websock_adapter, "~> 0.5"}
+      {:websock_adapter, "~> 0.5"},
+      {:ex_tauri, "~> 0.7.1"}
     ]
   end
 
@@ -86,6 +106,9 @@ defmodule StreamdeckEmulator.MixProject do
         "esbuild streamdeck_emulator --minify",
         "phx.digest"
       ],
+      # Builds the desktop app (src-tauri/target/release/bundle/). ex_tauri.build
+      # makes the release but not the digested assets prod serves.
+      "desktop.build": ["compile", "assets.deploy", "ex_tauri.build"],
       precommit: ["compile --warnings-as-errors", "deps.unlock --unused", "format", "test"]
     ]
   end

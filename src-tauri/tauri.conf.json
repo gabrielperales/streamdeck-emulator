@@ -1,0 +1,43 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "app": {
+    "security": {
+      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' ipc: tauri: ws: wss:; img-src 'self' data: asset: tauri:; font-src 'self' data:"
+    },
+    "windows": [
+      {
+        "title": "Stream Deck Emulator",
+        "width": 1280,
+        "url": "data:text/html;base64,PCFkb2N0eXBlIGh0bWw+PG1ldGEgY2hhcnNldD0idXRmLTgiPjx0aXRsZT5TdHJlYW0gRGVjayBFbXVsYXRvcjwvdGl0bGU+CjxzdHlsZT4KICA6cm9vdCB7IGNvbG9yLXNjaGVtZTogbGlnaHQgZGFyazsgfQogIGh0bWwsIGJvZHkgeyBtYXJnaW46IDA7IGhlaWdodDogMTAwJTsgfQogIGJvZHkgeyBkaXNwbGF5OiBmbGV4OyBhbGlnbi1pdGVtczogY2VudGVyOyBqdXN0aWZ5LWNvbnRlbnQ6IGNlbnRlcjsKICAgICAgICAgZm9udC1mYW1pbHk6IC1hcHBsZS1zeXN0ZW0sIEJsaW5rTWFjU3lzdGVtRm9udCwgIlNlZ29lIFVJIiwgc2Fucy1zZXJpZjsKICAgICAgICAgYmFja2dyb3VuZDogQ2FudmFzOyBjb2xvcjogQ2FudmFzVGV4dDsgb3BhY2l0eTogMC43OyB9Cjwvc3R5bGU+CjxkaXYgZGF0YS10YXVyaS1kcmFnLXJlZ2lvbj5TdGFydGluZyBTdHJlYW0gRGVjayBFbXVsYXRvcuKApjwvZGl2Pgo=",
+        "height": 860,
+        "fullscreen": false,
+        "resizable": true
+      }
+    ],
+    "withGlobalTauri": true
+  },
+  "build": {
+    "devUrl": "http://localhost:4000",
+    "frontendDist": "http://localhost:4000"
+  },
+  "bundle": {
+    "active": true,
+    "android": {
+      "debugApplicationIdSuffix": ".debug"
+    },
+    "externalBin": [
+      "../burrito_out/streamdeck_emulator_desktop"
+    ],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "targets": "all"
+  },
+  "identifier": "com.gabrielperales.streamdeck-emulator",
+  "productName": "Stream Deck Emulator",
+  "version": "0.1.0"
+}

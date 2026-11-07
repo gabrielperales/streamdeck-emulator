@@ -16,7 +16,8 @@ and the Marketplace are out of scope for now.
 
 ## Running it
 
-The toolchain is pinned in `mise.toml` (Erlang/OTP 27, Elixir 1.20, Node 24).
+The toolchain is pinned in `mise.toml` (Erlang/OTP 27, Elixir 1.20, Node 24;
+Rust and Zig for the desktop app).
 
 ```sh
 mise install
@@ -55,6 +56,36 @@ Everything listens on loopback only. Plugins connect to `127.0.0.1` and PIs to
   ]
 }
 ```
+
+## Desktop app
+
+The emulator also builds as a macOS app with [ex_tauri](https://github.com/filipecabaco/ex_tauri):
+a [Tauri](https://tauri.app) window around the same Phoenix backend, which
+[Burrito](https://github.com/burrito-elixir/burrito) wraps into one executable.
+In the app you load a plugin with a native dialog or by dropping a `.sdPlugin`
+folder or `.streamDeckPlugin` file onto the window.
+
+`mise.toml` also pins what the app needs: Rust, and exactly Zig 0.16.0 for
+Burrito.
+
+```sh
+mix ex_tauri.dev              # the app in a native window, with live reload
+MIX_ENV=prod mix desktop.build  # .app and .dmg in src-tauri/target/release/bundle/
+```
+
+Inside the app, the HTTP server only answers the app's own window: the shell
+hands the backend a random token at launch (`ExTauri.Token`), and every request
+needs it, the control API included (as `Authorization: Bearer <token>`). The CLI,
+`mix phx.server` and tests run without a token. The plugin's WebSocket port is
+not affected.
+
+Burrito unpacks the backend into `~/Library/Application Support/.burrito/`
+once per version. When testing a rebuild with the same version, delete
+`streamdeck_emulator_desktop_*` there first, or the app keeps running the old
+build.
+
+The app icon's source is `desktop/app-icon.svg`; regenerate the icons with
+`mix ex_tauri.icon desktop/app-icon.png`.
 
 ## Control API
 

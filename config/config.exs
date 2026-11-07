@@ -10,6 +10,19 @@ import Config
 config :streamdeck_emulator,
   generators: [timestamp_type: :utc_datetime]
 
+# Desktop app (ex_tauri). In the packaged app the Tauri shell picks a free port
+# and passes it as PORT; this port is only used by `mix ex_tauri.dev`.
+config :ex_tauri,
+  app_name: "Stream Deck Emulator",
+  window_title: "Stream Deck Emulator",
+  host: "localhost",
+  port: 4000,
+  width: 1280,
+  height: 860,
+  resize: true,
+  version: "2.5.1",
+  release_name: "streamdeck_emulator_desktop"
+
 # Configure the endpoint
 config :streamdeck_emulator, StreamdeckEmulatorWeb.Endpoint,
   url: [host: "localhost"],
