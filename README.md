@@ -112,7 +112,9 @@ shell only on its own OS, so the
 Linux (`--sidecar-only`), then bundles on macOS, Linux and Windows runners. Each
 runner first runs `e2e/smoke-sidecar.mjs` against its backend: it starts it,
 loads the echo fixture as a Node.js plugin and presses a key. A `v*` tag
-publishes the bundles as a draft release.
+makes a draft release with the bundles, described by that version's section of
+[CHANGELOG.md](CHANGELOG.md); the tag must match the version in `mix.exs`,
+`src-tauri/tauri.conf.json` and `src-tauri/Cargo.toml`.
 
 JavaScript plugins (a `.js`, `.mjs` or `.cjs` `CodePath`, the SDK v2 default)
 run with `node` from `PATH`, or `STREAMDECK_NODE`. On Linux, where the Stream

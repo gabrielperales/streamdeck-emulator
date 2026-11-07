@@ -1,6 +1,6 @@
 [package]
 name = "stream_deck_emulator"
-version = "0.1.0"
+version = "0.1.1"
 default-run = "stream_deck_emulator"
 edition = "2021"
 description = "Desktop shell of the Stream Deck emulator"

@@ -6,10 +6,19 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-11-07
+
 ### Fixed
 
 - The Property Inspector's frame now fits its content. It used to grow with
   every resize and never shrink.
+
+### Changed
+
+- GitHub release notes now come from this changelog's section for the
+  version, and a release tag fails early when the versions or the changelog
+  disagree with it.
+- The README shows screenshots of the emulator and of the phone view.
 
 ## [0.1.0] - 2026-11-07
 
@@ -82,5 +91,6 @@ or the Stream Deck app.
 - The desktop builds are not signed or notarized yet, so macOS Gatekeeper and
   Windows SmartScreen warn on first launch.
 
-[Unreleased]: https://github.com/gabrielperales/streamdeck-emulator/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/gabrielperales/streamdeck-emulator/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/gabrielperales/streamdeck-emulator/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/gabrielperales/streamdeck-emulator/releases/tag/v0.1.0
