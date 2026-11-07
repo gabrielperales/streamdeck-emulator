@@ -243,8 +243,13 @@ defmodule StreamdeckEmulatorWeb.DeckLive do
             }
             win.addEventListener("error", (e) => report("error", e.message))
 
+            // Measure the body, not the document: inside an iframe the document
+            // is never shorter than the frame, so the frame could only grow.
             const fit = () => {
-              frame.style.height = Math.max(win.document.documentElement.scrollHeight, 160) + "px"
+              const body = win.document.body
+              const style = win.getComputedStyle(body)
+              const height = body.scrollHeight + parseFloat(style.marginTop) + parseFloat(style.marginBottom)
+              frame.style.height = Math.max(Math.ceil(height), 160) + "px"
             }
             new win.ResizeObserver(fit).observe(win.document.body)
             fit()

@@ -13,6 +13,8 @@ plugins without hardware. It:
 - has a JSON control API and a CLI for scripts and CI;
 - builds as a desktop app for macOS, Windows and Ubuntu/Debian.
 
+![The emulator running the echo test plugin: the virtual device, the selected key's settings and Property Inspector, and the event log](docs/screenshots/emulator.png)
+
 Status: early development. [docs/protocol.md](docs/protocol.md) lists the
 Stream Deck app behaviour the emulator reproduces. Profiles, multi-actions, encoders (Stream Deck +)
 and the Marketplace are out of scope for now.
@@ -66,6 +68,10 @@ Everything listens on loopback only. Plugins connect to `127.0.0.1` and PIs to
 Click **Use from a phone** in the UI (or start with `--remote`) and scan the
 QR code with a phone on the same network. The phone opens the keys full
 screen; add the page to its home screen to keep it at hand.
+
+<p align="center">
+  <img src="docs/screenshots/phone.png" alt="The phone view: the deck's keys full screen, one showing the OK feedback after a press" width="600">
+</p>
 
 Phone access is off until you turn it on. Turning it on starts a second
 listener on every network interface and makes a new pairing code; the QR code's

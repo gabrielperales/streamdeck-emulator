@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- The Property Inspector's frame now fits its content. It used to grow with
+  every resize and never shrink.
+
 ## [0.1.0] - 2026-11-07
 
 First release: run and test Stream Deck SDK v2 plugins without a Stream Deck
