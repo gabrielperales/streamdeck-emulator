@@ -1,9 +1,9 @@
 [package]
 name = "stream_deck_emulator"
-version = "0.7.1"
+version = "0.1.0"
 default-run = "stream_deck_emulator"
 edition = "2021"
-description = ""
+description = "Desktop shell of the Stream Deck emulator"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

@@ -9,7 +9,9 @@ plugins without hardware. It:
   images and OK/alert feedback the plugin sends back;
 - hosts the plugin's Property Inspector (PI) and connects it, so settings edited
   in the PI reach the plugin;
-- has a JSON control API and a CLI for scripts and CI.
+- lets phones on the local network use the deck, paired with a QR code;
+- has a JSON control API and a CLI for scripts and CI;
+- builds as a desktop app for macOS, Windows and Ubuntu/Debian.
 
 Status: early development. [docs/protocol.md](docs/protocol.md) lists the
 Stream Deck app behaviour the emulator reproduces. Profiles, multi-actions, encoders (Stream Deck +)
@@ -35,6 +37,7 @@ package. Without it, load a plugin from the UI.
 | `--ws-port PORT` | 0 (free port) | Plugin and PI WebSocket connections |
 | `--layout FILE` | | Keys to place once the plugin loads (below) |
 | `--open` | | Open the UI in the browser |
+| `--remote` | | Let phones use the deck right away (see below) |
 
 When everything is up, it prints a line that scripts can wait for:
 
@@ -57,6 +60,24 @@ Everything listens on loopback only. Plugins connect to `127.0.0.1` and PIs to
   ]
 }
 ```
+
+## Using the deck from a phone
+
+Click **Use from a phone** in the UI (or start with `--remote`) and scan the
+QR code with a phone on the same network. The phone opens the keys full
+screen; add the page to its home screen to keep it at hand.
+
+Phone access is off until you turn it on. Turning it on starts a second
+listener on every network interface and makes a new pairing code; the QR code's
+URL carries it, and the phone keeps it in its session. A paired phone can only
+see and press keys: not the Property Inspector, the event log, the plugin
+controls or the API. Turning phone access off, or on again, unpairs every
+phone. Anyone who scans the code can press keys, and pressing a key runs the
+plugin's action, so only share it with people you trust.
+
+If the phone cannot load the page, the computer's firewall is probably blocking
+incoming connections for the emulator (on macOS, allow them when it asks, or in
+System Settings → Network → Firewall).
 
 ## Desktop app
 
@@ -159,6 +180,10 @@ browser tests against [streamdeck-osascript](https://github.com/gabrielperales/s
 ```sh
 OSASCRIPT_PLUGIN=/path/to/com.gabrielperales.osascript.streamDeckPlugin npx playwright test
 ```
+
+## Changes
+
+See [CHANGELOG.md](CHANGELOG.md).
 
 ## Licence
 
