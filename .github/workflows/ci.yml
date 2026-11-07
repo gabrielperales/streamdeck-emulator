@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    # The emulator and its echo fixture plugin are portable, so Linux is enough
+    # here. Plugins that need macOS (like streamdeck-osascript) run their own
+    # e2e on macOS runners.
+    runs-on: ubuntu-24.04
+    env:
+      MIX_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+
+      # Keep in sync with mise.toml.
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: "27.3.4.14"
+          elixir-version: "1.20.4"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.12.0"
+          cache: npm
+          cache-dependency-path: e2e/package-lock.json
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            _build
+          key: mix-${{ runner.os }}-${{ hashFiles('mix.lock', 'mise.toml') }}
+
+      - run: mix deps.get
+      - run: mix compile --warnings-as-errors
+      - run: mix format --check-formatted
+      - run: mix test
+
+      - name: Build assets for the e2e server
+        run: mix assets.setup && mix assets.build
+        env:
+          MIX_ENV: dev
+      - run: npm ci
+        working-directory: e2e
+      - run: npx playwright install --with-deps chromium
+        working-directory: e2e
+      - run: npx playwright test
+        working-directory: e2e
+        env:
+          MIX_ENV: dev
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: |
+            e2e/playwright-report
+            e2e/test-results

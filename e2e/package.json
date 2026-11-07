@@ -1,0 +1,11 @@
+{
+  "name": "streamdeck-emulator-e2e",
+  "private": true,
+  "description": "Browser tests that drive the emulator, its plugins and their Property Inspectors.",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.65.0"
+  }
+}

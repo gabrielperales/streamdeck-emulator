@@ -12,6 +12,7 @@ defmodule StreamdeckEmulatorWeb.Router do
 
   pipeline :api do
     plug :accepts, ["json"]
+    plug StreamdeckEmulatorWeb.RequireJSON
   end
 
   scope "/", StreamdeckEmulatorWeb do
@@ -26,8 +27,18 @@ defmodule StreamdeckEmulatorWeb.Router do
     get "/*path", PluginFileController, :show
   end
 
-  # Other scopes may use custom stacks.
-  # scope "/api", StreamdeckEmulatorWeb do
-  #   pipe_through :api
-  # end
+  # Control API for scripts and tests.
+  scope "/api", StreamdeckEmulatorWeb do
+    pipe_through :api
+
+    get "/state", ApiController, :state
+    get "/events", ApiController, :events
+    post "/plugin", ApiController, :load_plugin
+    delete "/plugin", ApiController, :unload_plugin
+    put "/keys/:column/:row", ApiController, :put_key
+    delete "/keys/:column/:row", ApiController, :delete_key
+    post "/keys/:column/:row/press", ApiController, :press
+    post "/keys/:column/:row/down", ApiController, :key_down
+    post "/keys/:column/:row/up", ApiController, :key_up
+  end
 end
