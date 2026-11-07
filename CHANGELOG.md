@@ -40,7 +40,8 @@ or the Stream Deck app.
   message in both directions plus the plugin's output.
 - **Phone access.** "Use from a phone" lets phones on the local network use
   the deck: scanning a QR code pairs the phone and opens a full-screen,
-  touch-friendly view of the keys. Paired phones can only see and press keys.
+  touch-friendly view of the keys. The QR code stays in a collapsible section
+  of the UI until you open it. Paired phones can only see and press keys.
   Stopping phone access, or starting it again, unpairs every phone. Off by
   default; `mix streamdeck.run --remote` turns it on at startup.
 - **CLI for scripts and CI.** `mix streamdeck.run [PLUGIN]` with
