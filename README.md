@@ -11,7 +11,8 @@ plugins without hardware. It:
   in the PI reach the plugin;
 - has a JSON control API and a CLI for scripts and CI.
 
-Status: early development. Profiles, multi-actions, encoders (Stream Deck +)
+Status: early development. [docs/protocol.md](docs/protocol.md) lists the
+Stream Deck app behaviour the emulator reproduces. Profiles, multi-actions, encoders (Stream Deck +)
 and the Marketplace are out of scope for now.
 
 ## Running it
