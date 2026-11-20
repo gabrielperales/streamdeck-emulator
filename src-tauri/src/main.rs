@@ -3,7 +3,7 @@
 use tauri_plugin_shell::process::{CommandChild, CommandEvent};
 use tauri_plugin_shell::ShellExt;
 use tauri::Manager;
-use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
+use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
 
 use std::io::Write;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
@@ -38,6 +38,20 @@ static RESTARTS: AtomicU32 = AtomicU32::new(0);
 static QUIT_STARTED: AtomicBool = AtomicBool::new(false);
 static EXIT_READY: AtomicBool = AtomicBool::new(false);
 
+// Closing the main window hides it while this is set, and the app keeps running
+// in the tray; the tray's Quit item is the way out. The backend sets it from
+// the user's preference (StreamdeckEmulator.Desktop.Tray); until it has, or if
+// it is gone, the default holds: off on Linux, where GNOME shows no tray icons
+// without an extension and a hidden window could not be brought back.
+static CLOSE_TO_TRAY: AtomicBool = AtomicBool::new(!cfg!(target_os = "linux"));
+
+// Whether the tray icon exists. Without one, hiding the window would leave
+// nothing to bring it back or quit with, so closing quits.
+static TRAY_READY: AtomicBool = AtomicBool::new(false);
+
+// The first close to the tray says where the app went; later ones do not.
+static TRAY_NOTICE_SHOWN: AtomicBool = AtomicBool::new(false);
+
 // Outbound side of the sidecar channel: heartbeats, replies, and native
 // events (menu/tray clicks) are queued here and written by the writer thread.
 static CHANNEL_TX: Mutex<Option<mpsc::Sender<String>>> = Mutex::new(None);
@@ -66,6 +80,7 @@ const HEARTBEAT_LATE: Duration = Duration::from_millis(750);
 // the app, tray included, reaches the one on_menu_event handler below, and an
 // app whose tray had an item called "quit" (or "quit_session") used to quit.
 const QUIT_ID: &str = "ex_tauri:quit";
+const SHOW_ID: &str = "ex_tauri:show";
 const TRAY_ID: &str = "ex_tauri_tray";
 const TRAY_ITEM_PREFIX: &str = "ex_tauri_tray:";
 
@@ -157,6 +172,10 @@ fn main() {
             Menu::with_items(handle, &[&app_menu, &edit_menu])
         })
         .setup(|app| {
+            // Before the backend, and independent of it: Show and Quit must
+            // work while it is starting, restarting or gone.
+            create_tray(app.handle());
+
             let port = resolve_port();
             let handle = app.handle().clone();
             // Everything after this runs on a worker thread. `setup` runs on the
@@ -183,6 +202,11 @@ fn main() {
                 return;
             }
 
+            if id == SHOW_ID {
+                show_main_window(app);
+                return;
+            }
+
             // Server-side code reacts to both (see ExTauri.Desktop.subscribe/0).
             match id.strip_prefix(TRAY_ITEM_PREFIX) {
                 Some(tray_id) => send_channel_event("tray_menu_click", serde_json::json!({"id": tray_id})),
@@ -190,12 +214,21 @@ fn main() {
             }
         })
         .on_window_event(|window, event| {
-            // Closing the main window quits the app; secondary windows
-            // (ExTauri.Window.open) close without stopping anything.
+            // Closing the main window hides it to the tray (see CLOSE_TO_TRAY)
+            // or quits the app; secondary windows (ExTauri.Window.open) close
+            // without stopping anything.
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 if window.label() == "main" {
                     api.prevent_close();
-                    quit(window.app_handle());
+                    let app = window.app_handle();
+                    if CLOSE_TO_TRAY.load(Ordering::SeqCst)
+                        && TRAY_READY.load(Ordering::SeqCst)
+                        && !QUIT_STARTED.load(Ordering::SeqCst)
+                    {
+                        hide_to_tray(app);
+                    } else {
+                        quit(app);
+                    }
                 }
             }
         })
@@ -228,12 +261,41 @@ fn main() {
 }
 
 fn show_main_window(app: &tauri::AppHandle) {
+    set_dock_visible(app, true);
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.unminimize();
         let _ = window.show();
         let _ = window.set_focus();
     }
 }
+
+// The window goes, the backend and the plugin keep running. On macOS the Dock
+// icon goes too, so the app lives in the menu bar alone until it is shown again.
+fn hide_to_tray(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.hide();
+    }
+    set_dock_visible(app, false);
+
+    if !TRAY_NOTICE_SHOWN.swap(true, Ordering::SeqCst) {
+        use tauri_plugin_notification::NotificationExt;
+        let place = if cfg!(target_os = "macos") { "menu bar" } else { "tray" };
+        let _ = app
+            .notification()
+            .builder()
+            .title(format!("{} is still running", APP_NAME))
+            .body(format!("The plugin keeps running. To quit, use Quit in the {} icon's menu.", place))
+            .show();
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn set_dock_visible(app: &tauri::AppHandle, visible: bool) {
+    let _ = app.set_dock_visibility(visible);
+}
+
+#[cfg(not(target_os = "macos"))]
+fn set_dock_visible(_app: &tauri::AppHandle, _visible: bool) {}
 
 // The one way out — the Quit item, closing the main window, ExitRequested, and
 // ExTauri.Desktop.quit/0 all come here. Off the main thread: stopping the
@@ -449,6 +511,11 @@ async fn watch_sidecar(
                 // A restarted one starts out believing nothing is held, so an
                 // activity left in place here was never released again.
                 app_nap::set_disabled(false);
+
+                // The tray items the backend added go with it: their clicks
+                // would go to a channel nobody listens on. Show and Quit stay.
+                let tray_app = app.clone();
+                let _ = app.run_on_main_thread(move || set_tray(&tray_app, serde_json::json!({})));
 
                 if !HEARTBEAT_ACTIVE.load(Ordering::SeqCst) {
                     log::info!(target: "sidecar", "{} (pid {})", exit, pid);
@@ -883,6 +950,7 @@ fn show_page(app: &tauri::AppHandle, page: Page, detail: &str) {
             let _ = window.navigate(url);
         }
         // Somebody should see this, even with the window hidden or minimised.
+        set_dock_visible(app, true);
         let _ = window.show();
     }
 }
@@ -1086,6 +1154,17 @@ fn handle_channel_command(app: &tauri::AppHandle, line: &str) {
 
         "keep_awake" => app_nap::set_disabled(payload["active"].as_bool().unwrap_or(false)),
 
+        "set_close_to_tray" => {
+            if let Some(enabled) = payload["enabled"].as_bool() {
+                CLOSE_TO_TRAY.store(enabled, Ordering::SeqCst);
+            }
+        }
+
+        "show_window" => {
+            let app_handle = app.clone();
+            let _ = app.run_on_main_thread(move || show_main_window(&app_handle));
+        }
+
         "quit" => quit(app),
 
         other => {
@@ -1145,37 +1224,96 @@ mod app_nap {
     pub fn set_disabled(_disabled: bool) {}
 }
 
-// Builds (or replaces) the system tray from an Elixir-provided spec:
-// {"tooltip": "...", "items": [{"id": "...", "label": "..."}, ...]}.
-// Item clicks reach the app-wide on_menu_event, which forwards them as
-// "tray_menu_click" events on the channel.
-fn set_tray(app: &tauri::AppHandle, payload: serde_json::Value) {
-    use tauri::tray::TrayIconBuilder;
+// The tray icon is the shell's, made once at startup: its Show and Quit items
+// work whatever state the backend is in. The backend adds items between them
+// with set_tray. On Windows a left click on the icon shows the window and a
+// right click opens the menu; on macOS and Linux any click opens the menu
+// (Linux reports no clicks on the icon itself, hence the Show item).
+fn create_tray(app: &tauri::AppHandle) {
+    use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 
-    // A tray icon is registered with the app as well as returned here, so
-    // dropping our handle never removed it: every set_tray added another icon.
-    let _ = app.remove_tray_by_id(TRAY_ID);
+    let menu = match tray_menu(app, &[]) {
+        Ok(menu) => menu,
+        Err(error) => {
+            log::error!(target: "tray", "could not build the tray menu: {}", error);
+            return;
+        }
+    };
 
-    let empty = Vec::new();
-    let item_specs = payload["items"].as_array().unwrap_or(&empty);
+    // No on_menu_event here: TrayIconBuilder registers it as another global
+    // listener, and the app-wide one already handles every item.
+    let mut builder = TrayIconBuilder::with_id(TRAY_ID)
+        .menu(&menu)
+        .tooltip(APP_NAME)
+        .show_menu_on_left_click(!cfg!(target_os = "windows"))
+        .on_tray_icon_event(|tray, event| {
+            if cfg!(target_os = "windows") {
+                if let TrayIconEvent::Click {
+                    button: MouseButton::Left,
+                    button_state: MouseButtonState::Up,
+                    ..
+                } = event
+                {
+                    show_main_window(tray.app_handle());
+                }
+            }
+        });
 
-    let mut items: Vec<MenuItem<tauri::Wry>> = Vec::new();
-    for spec in item_specs {
+    if let Some(icon) = app.default_window_icon() {
+        builder = builder.icon(icon.clone());
+    }
+
+    match builder.build(app) {
+        Ok(_) => TRAY_READY.store(true, Ordering::SeqCst),
+        Err(error) => log::error!(target: "tray", "could not create the tray icon: {}", error),
+    }
+}
+
+// Show, the backend's items (if any) between separators, Quit. A backend item
+// is {"id": "...", "label": "..."}, plus "checked": true/false for one with a
+// check mark; its clicks reach on_menu_event and go to the backend as
+// "tray_menu_click" events.
+fn tray_menu(app: &tauri::AppHandle, specs: &[serde_json::Value]) -> tauri::Result<Menu<tauri::Wry>> {
+    let menu = Menu::new(app)?;
+    menu.append(&MenuItem::with_id(app, SHOW_ID, format!("Show {}", APP_NAME), true, None::<&str>)?)?;
+
+    if !specs.is_empty() {
+        menu.append(&PredefinedMenuItem::separator(app)?)?;
+    }
+
+    for spec in specs {
         let id = spec["id"].as_str().unwrap_or("item");
         let label = spec["label"].as_str().unwrap_or(id);
         let namespaced = format!("{}{}", TRAY_ITEM_PREFIX, id);
-        if let Ok(item) = MenuItem::with_id(app, namespaced, label, true, None::<&str>) {
-            items.push(item);
+        match spec["checked"].as_bool() {
+            Some(checked) => {
+                menu.append(&CheckMenuItem::with_id(app, namespaced, label, true, checked, None::<&str>)?)?
+            }
+            None => menu.append(&MenuItem::with_id(app, namespaced, label, true, None::<&str>)?)?,
         }
     }
 
-    let item_refs: Vec<&dyn tauri::menu::IsMenuItem<tauri::Wry>> = items
-        .iter()
-        .map(|item| item as &dyn tauri::menu::IsMenuItem<tauri::Wry>)
-        .collect();
+    menu.append(&PredefinedMenuItem::separator(app)?)?;
+    menu.append(&MenuItem::with_id(app, QUIT_ID, format!("Quit {}", APP_NAME), true, None::<&str>)?)?;
+    Ok(menu)
+}
 
-    let menu = match Menu::with_items(app, &item_refs) {
-        Ok(menu) => menu,
+// Replaces the backend's part of the tray menu from an Elixir-provided spec:
+// {"tooltip": "...", "items": [{"id": "...", "label": "...", "checked": bool}]}.
+// An empty spec leaves Show and Quit alone.
+fn set_tray(app: &tauri::AppHandle, payload: serde_json::Value) {
+    let Some(tray) = app.tray_by_id(TRAY_ID) else {
+        send_channel_event("error", serde_json::json!({"message": "There is no tray icon"}));
+        return;
+    };
+
+    let empty = Vec::new();
+    let specs = payload["items"].as_array().unwrap_or(&empty);
+
+    match tray_menu(app, specs) {
+        Ok(menu) => {
+            let _ = tray.set_menu(Some(menu));
+        }
         Err(error) => {
             send_channel_event(
                 "error",
@@ -1183,26 +1321,7 @@ fn set_tray(app: &tauri::AppHandle, payload: serde_json::Value) {
             );
             return;
         }
-    };
-
-    // No on_menu_event here: TrayIconBuilder registers it as another global
-    // listener that is never removed, so each set_tray multiplied every click.
-    let mut builder = TrayIconBuilder::with_id(TRAY_ID)
-        .menu(&menu)
-        .show_menu_on_left_click(true);
-
-    if let Some(tooltip) = payload["tooltip"].as_str() {
-        builder = builder.tooltip(tooltip);
     }
 
-    if let Some(icon) = app.default_window_icon() {
-        builder = builder.icon(icon.clone());
-    }
-
-    if let Err(error) = builder.build(app) {
-        send_channel_event(
-            "error",
-            serde_json::json!({"message": format!("Failed to build tray: {}", error)}),
-        );
-    }
+    let _ = tray.set_tooltip(Some(payload["tooltip"].as_str().unwrap_or(APP_NAME)));
 }
