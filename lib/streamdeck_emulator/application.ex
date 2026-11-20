@@ -20,6 +20,8 @@ defmodule StreamdeckEmulator.Application do
       # In the desktop app, stops the backend (and so the plugin) when the window
       # goes away. Elsewhere there is no shell to watch.
       if(StreamdeckEmulator.Desktop.shell?(), do: ExTauri.ShutdownManager),
+      # The desktop app's tray menu (after the ShutdownManager, whose channel it uses).
+      if(StreamdeckEmulator.Desktop.shell?(), do: StreamdeckEmulator.Desktop.Tray),
       # Start to serve requests, typically the last entry
       StreamdeckEmulatorWeb.Endpoint
     ]

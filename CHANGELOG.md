@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Tray icon in the desktop app.** Closing the window keeps the app, the
+  plugin and phone access running in the system tray (the menu bar on macOS,
+  where the Dock icon goes away too). The tray menu shows the window, turns
+  phone access on and off, and quits. **Keep running when closed** in the
+  same menu turns this off; it is off by default on Linux.
+
 ## [0.1.1] - 2026-11-07
 
 ### Fixed

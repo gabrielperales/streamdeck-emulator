@@ -93,6 +93,14 @@ a [Tauri](https://tauri.app) window around the same Phoenix backend, which
 In the app you load a plugin with a native dialog or by dropping a `.sdPlugin`
 folder or `.streamDeckPlugin` file onto the window.
 
+The app has an icon in the system tray (the menu bar on macOS). Closing the
+window leaves the app running there, with the plugin and phone access, so a
+phone can keep using the deck. On macOS the Dock icon goes away too until
+the window is shown again. The tray menu shows the window, turns phone access
+on and off, and quits the app. Untick **Keep running when closed** in it to
+make closing the window quit the app instead. This is the default on Linux,
+because GNOME shows no tray icons without the AppIndicator extension.
+
 `mise.toml` also pins what the app needs: Rust, and exactly Zig 0.16.0 for
 Burrito.
 
